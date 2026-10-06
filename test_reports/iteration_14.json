@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 14: Verified production configs (domain-aware routing, policy pages, /website redirect, mobile hero). All 12 requested checks pass. Backend public APIs healthy: GET /api/public/rooms (200), GET /api/public/availability?check_in=2026-10-15&check_out=2026-10-16 (200, Double @ LKR 9500). Frontend: GET /refund-policy, /privacy-policy, /terms all return 200 and render correct components with H1 titles. All 3 policy pages contain required hotel details: 'Kreation Hotels Pvt Ltd', 'No.5, Palmyrah Avenue, Colombo 03', '0112 301737', PayHere mention, 30% advance. Refund & Terms both mention check-in 12:30 PM and check-out 11:30 AM. Terms also mentions '5 minutes' hold and '15 rooms'. Each policy page shows the Kreation logo (navbar + footer, 2 imgs) and a 'Back to Home' link that correctly navigates to /. /website correctly redirects (via <Navigate replace>) to clean / URL. Root / renders Website (not CRM) with hero booking bar containing data-testids hero-booking-bar, booking-checkin, booking-checkout, check-availability-btn. Footer shows all 3 policy links. CRM at /dashboard still works with admin/admin123 (dashboard content detected post-login). Mobile viewport (390x844) renders hero + booking bar fitting within viewport width (confirmed via screenshot and bounding box).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Root /", "issues": ["Page never reaches networkidle state because the Turnstile widget keeps a long-lived connection to challenges.cloudflare.com open. Not a functional defect (DOMContentLoaded fires normally and all UI renders) but any automated test using wait_until='networkidle' will time out. Consider lazy-loading Turnstile only when the Contact section is in viewport."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_public_website.py (regression from iter13 - still green)"
+  ],
+  "action_items": [
+    "No action required - all 12 requested features verified working."
+  ],
+  "critical_code_review_comments": [
+    "App.js domain check uses hostname.startsWith('app.') - safe for app.kreationhotels.lk; ensure production DNS/ingress also forwards app.* subdomain traffic to this frontend (currently preview domain hospitality-ops-18.preview.emergentagent.com is correctly treated as non-CRM public site).",
+    "Policy pages hardcode logo URL (LOGO_URL constant) - fine for now but consider moving brand assets into a central config.",
+    "Turnstile widget still loads eagerly on every page including /refund-policy, /privacy-policy, /terms where it's not needed. Minor perf opportunity.",
+    "Pre-existing (from iter13) still open: no idempotency guard on /payhere/notify; booking/hold datetimes mix naive and tz-aware."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (2/2 public endpoints)", "frontend": "100% (12/12 checks)"},
+  "test_credentials": "admin/admin123 - verified on /dashboard",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Public routes are /, /refund-policy, /privacy-policy, /terms. /website -> Navigate replace to /. App.js uses hostname.startsWith('app.') to choose CRM vs Website at root. PolicyPage component (Website.js line 576) wraps all 3 policy components with sticky nav (logo + Back to Home link) and shared Footer. Testids for hero: hero-booking-bar, booking-checkin, booking-checkout, check-availability-btn. When writing Playwright for /, prefer wait_until='domcontentloaded' because Turnstile keeps networkidle from firing.",
+  "rca of the issue": "N/A - no bugs found in this iteration."
+}
