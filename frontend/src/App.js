@@ -15005,33 +15005,31 @@ function App() {
   const hostname = window.location.hostname;
   const isCRM = hostname.startsWith("app.");
 
+  if (isCRM) {
+    // CRM domain: all routes are the admin portal
+    return (
+      <BrowserRouter>
+        <FinancialProvider>
+          <AuthProvider>
+            <ProtectedRoute>
+              <AppContent />
+            </ProtectedRoute>
+          </AuthProvider>
+        </FinancialProvider>
+      </BrowserRouter>
+    );
+  }
+
+  // Public domain: hotel website
   return (
     <BrowserRouter>
       <Routes>
-        {/* Domain-aware root routing */}
-        <Route path="/" element={
-          isCRM ? (
-            <FinancialProvider><AuthProvider><ProtectedRoute><AppContent /></ProtectedRoute></AuthProvider></FinancialProvider>
-          ) : (
-            <Website />
-          )
-        } />
-        {/* /website redirects to clean / for public URLs */}
+        <Route path="/" element={<Website />} />
         <Route path="/website" element={<Navigate to="/" replace />} />
-        {/* Policy pages - public */}
         <Route path="/refund-policy" element={<Website page="refund" />} />
         <Route path="/privacy-policy" element={<Website page="privacy" />} />
         <Route path="/terms" element={<Website page="terms" />} />
-        {/* CRM routes - auth required */}
-        <Route path="/*" element={
-          <FinancialProvider>
-            <AuthProvider>
-              <ProtectedRoute>
-                <AppContent />
-              </ProtectedRoute>
-            </AuthProvider>
-          </FinancialProvider>
-        } />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
