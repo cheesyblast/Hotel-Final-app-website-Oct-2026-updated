@@ -501,7 +501,7 @@ async def get_booking_status(order_id: str):
 async def submit_contact_form(req: ContactFormRequest):
     """Submit contact form with Cloudflare Turnstile verification"""
     # Verify Turnstile token
-    turnstile_secret = os.environ.get("TURNSTILE_SECRET_KEY", "")
+    turnstile_secret = os.environ.get("TURNSTILE_SECRET_KEY", "0x4AAAAAAFPUeHxwEx4yE7kmLTxueDpPc9Q")
     if turnstile_secret and req.turnstile_token and req.turnstile_token != "bypass":
         verify_ok = True
         try:

@@ -3,7 +3,7 @@ import axios from "axios";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
-const TURNSTILE_KEY = process.env.REACT_APP_TURNSTILE_SITE_KEY;
+const TURNSTILE_KEY = process.env.REACT_APP_TURNSTILE_SITE_KEY || "0x4AAAAAAFPUeHOCq6slM6kb";
 const PAYHERE_BASE = process.env.REACT_APP_PAYHERE_BASE_URL || "https://sandbox.payhere.lk";
 
 const LOGO_URL = "https://customer-assets-jt897jd0.emergentagent.net/job_18d8770a-5028-4f62-923e-76f48cfb8c3c/artifacts/8k851qew_kreation_hotel_logo-removebg%20%281%29.webp";
@@ -92,26 +92,26 @@ const Hero = ({ onSearch, loading }) => {
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/20 to-black/60" />
       <div className="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
         <p className="text-white/90 tracking-[0.4em] uppercase text-xs sm:text-sm mb-4 font-medium">Boutique Hotel & Restaurant</p>
-        <h1 className="text-4xl sm:text-5xl lg:text-7xl ws-serif font-bold text-white leading-tight mb-3">
+        <h1 className="text-3xl sm:text-5xl lg:text-7xl ws-serif font-bold text-white leading-tight mb-3">
           Kreation Hotels Colombo
         </h1>
-        <p className="text-white/80 text-lg sm:text-xl mb-10">Where colonial charm meets modern luxury in Colombo</p>
+        <p className="text-white/80 text-sm sm:text-lg mb-6 sm:mb-10 px-2">Where colonial charm meets modern luxury in Colombo</p>
 
         {/* ── Booking Search Bar ── */}
-        <div className="bg-white/95 backdrop-blur-sm shadow-2xl rounded-lg p-4 sm:p-6 w-full max-w-3xl" data-testid="hero-booking-bar">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+        <div className="bg-white/95 backdrop-blur-sm shadow-2xl rounded-lg p-4 sm:p-6 w-full max-w-3xl mx-4" data-testid="hero-booking-bar">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 items-end">
             <div>
-              <label className="block text-[#1a1464] text-xs uppercase tracking-wider font-semibold mb-2">Check-in</label>
+              <label className="block text-[#1a1464] text-xs uppercase tracking-wider font-semibold mb-1 sm:mb-2">Check-in</label>
               <input type="date" value={checkIn} min={today} onChange={(e) => { setCheckIn(e.target.value); if (e.target.value && checkOut && e.target.value >= checkOut) { const d = new Date(e.target.value); d.setDate(d.getDate() + 1); setCheckOut(d.toISOString().split("T")[0]); }}}
-                className="w-full border-2 border-gray-200 text-gray-800 px-4 py-3 rounded focus:border-[#1a1464] focus:outline-none text-sm bg-white" data-testid="booking-checkin" />
+                className="w-full border-2 border-gray-200 text-gray-800 px-3 sm:px-4 py-2.5 sm:py-3 rounded focus:border-[#1a1464] focus:outline-none text-sm bg-white" data-testid="booking-checkin" />
             </div>
             <div>
-              <label className="block text-[#1a1464] text-xs uppercase tracking-wider font-semibold mb-2">Check-out</label>
+              <label className="block text-[#1a1464] text-xs uppercase tracking-wider font-semibold mb-1 sm:mb-2">Check-out</label>
               <input type="date" value={checkOut} min={checkIn || today} onChange={(e) => setCheckOut(e.target.value)}
-                className="w-full border-2 border-gray-200 text-gray-800 px-4 py-3 rounded focus:border-[#1a1464] focus:outline-none text-sm bg-white" data-testid="booking-checkout" />
+                className="w-full border-2 border-gray-200 text-gray-800 px-3 sm:px-4 py-2.5 sm:py-3 rounded focus:border-[#1a1464] focus:outline-none text-sm bg-white" data-testid="booking-checkout" />
             </div>
             <button onClick={handleSearch} disabled={loading} data-testid="check-availability-btn"
-              className="bg-[#e41e2e] hover:bg-[#c91826] disabled:opacity-50 text-white font-bold py-3 px-6 rounded uppercase tracking-widest text-sm transition-colors w-full">
+              className="bg-[#e41e2e] hover:bg-[#c91826] disabled:opacity-50 text-white font-bold py-2.5 sm:py-3 px-6 rounded uppercase tracking-widest text-xs sm:text-sm transition-colors w-full">
               {loading ? "Checking..." : "Check Availability"}
             </button>
           </div>
@@ -554,19 +554,254 @@ const Contact = ({ hotelInfo }) => {
 const Footer = () => (
   <footer className="bg-[#1a1464] py-12">
     <div className="max-w-7xl mx-auto px-6">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
         <div className="flex items-center space-x-4">
           <img src={LOGO_URL} alt="Kreation Hotels" className="h-10 brightness-0 invert" />
           <div className="text-left"><p className="text-white/60 text-xs">No.5, Palmyrah Avenue, Colombo 03</p><p className="text-white/60 text-xs">+94 112 301737</p></div>
         </div>
-        <p className="text-white/40 text-xs">&copy; {new Date().getFullYear()} Kreation Hotels. All rights reserved.</p>
+        <div className="flex flex-wrap justify-center gap-4 sm:gap-6">
+          <a href="/refund-policy" className="text-white/50 hover:text-white text-xs transition-colors">Refund Policy</a>
+          <a href="/privacy-policy" className="text-white/50 hover:text-white text-xs transition-colors">Privacy Policy</a>
+          <a href="/terms" className="text-white/50 hover:text-white text-xs transition-colors">Terms & Conditions</a>
+        </div>
+      </div>
+      <div className="border-t border-white/10 pt-4">
+        <p className="text-white/30 text-xs text-center">&copy; {new Date().getFullYear()} Kreation Hotels Pvt Ltd. All rights reserved.</p>
       </div>
     </div>
   </footer>
 );
 
+/* ════════════ POLICY PAGE WRAPPER ════════════ */
+const PolicyPage = ({ title, children }) => (
+  <div className="bg-white min-h-screen" style={{ fontFamily: FONT_SANS }}>
+    <style>{`.ws-serif { font-family: ${FONT_SERIF} !important; }`}</style>
+    {/* Simple nav */}
+    <nav className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
+      <div className="max-w-4xl mx-auto flex items-center justify-between px-6 py-3">
+        <a href="/"><img src={LOGO_URL} alt="Kreation Hotels" className="h-10 sm:h-12" /></a>
+        <a href="/" className="text-[#1a1464] text-sm font-semibold hover:text-[#e41e2e] transition-colors">&larr; Back to Home</a>
+      </div>
+    </nav>
+    <div className="max-w-4xl mx-auto px-6 py-12 sm:py-16">
+      <h1 className="text-2xl sm:text-4xl ws-serif font-bold text-[#1a1464] mb-8">{title}</h1>
+      <div className="prose prose-gray max-w-none text-gray-700 text-sm sm:text-base leading-relaxed space-y-6">
+        {children}
+      </div>
+    </div>
+    <Footer />
+  </div>
+);
+
+/* ════════════ REFUND / RETURN POLICY ════════════ */
+const RefundPolicy = () => (
+  <PolicyPage title="Refund & Cancellation Policy">
+    <p className="text-gray-500 text-xs">Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+
+    <p>This Refund & Cancellation Policy applies to all reservations made through the official website of <strong>Kreation Hotels Pvt Ltd</strong>, located at No.5, Palmyrah Avenue, Colombo 03, Sri Lanka. By making a reservation, you agree to the terms outlined below.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">1. Check-in & Check-out Times</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li><strong>Check-in:</strong> 12:30 PM (noon)</li>
+      <li><strong>Check-out:</strong> 11:30 AM (next day)</li>
+      <li>Early check-in or late check-out may be available upon request and is subject to availability and additional charges.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">2. Booking & Payment</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Reservations can be made online through our website using the PayHere payment gateway.</li>
+      <li>A minimum advance payment of <strong>30%</strong> of the total room charge is required to confirm a booking.</li>
+      <li>Guests may also choose to pay the <strong>full amount (100%)</strong> at the time of booking.</li>
+      <li>The remaining balance (if applicable) must be settled at check-in.</li>
+      <li>All prices are quoted in <strong>Sri Lankan Rupees (LKR)</strong> and are inclusive of applicable taxes unless stated otherwise.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">3. Cancellation Policy</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li><strong>More than 7 days before check-in:</strong> Full refund of the advance payment, minus a 5% processing fee.</li>
+      <li><strong>3 to 7 days before check-in:</strong> 50% of the advance payment will be refunded.</li>
+      <li><strong>Less than 3 days before check-in:</strong> No refund will be issued.</li>
+      <li><strong>No-show:</strong> If the guest fails to arrive on the check-in date without prior notice, no refund will be provided.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">4. Modification of Booking</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Date changes are subject to availability and must be requested at least 3 days before the original check-in date.</li>
+      <li>Modifications may result in a price difference which will be charged or refunded accordingly.</li>
+      <li>Room type changes are subject to availability and applicable rate differences.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">5. Refund Process</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Approved refunds will be processed to the original payment method within <strong>7–14 business days</strong>.</li>
+      <li>Refund timelines may vary depending on your bank or card issuer.</li>
+      <li>For refund inquiries, please contact us at <strong>0112 301737</strong> or email us.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">6. Restaurant Charges</h2>
+    <p>Charges for restaurant services, room service, and any additional amenities consumed during the stay are non-refundable and must be settled at checkout.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">7. Force Majeure</h2>
+    <p>Kreation Hotels shall not be liable for cancellations or modifications caused by events beyond our control, including natural disasters, government restrictions, pandemics, or civil unrest. In such cases, we will offer date changes or credit notes at our discretion.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">8. Contact Us</h2>
+    <p><strong>Kreation Hotels Pvt Ltd</strong><br/>No.5, Palmyrah Avenue, Colombo 03, Sri Lanka<br/>Phone: 0112 301737</p>
+  </PolicyPage>
+);
+
+/* ════════════ PRIVACY POLICY ════════════ */
+const PrivacyPolicy = () => (
+  <PolicyPage title="Privacy Policy">
+    <p className="text-gray-500 text-xs">Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+
+    <p><strong>Kreation Hotels Pvt Ltd</strong> ("we", "our", "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your personal information when you visit our website and use our services.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">1. Information We Collect</h2>
+    <h3 className="font-semibold text-[#1a1464] mt-4">1.1 Personal Information</h3>
+    <p>When you make a reservation, contact us, or interact with our website, we may collect:</p>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Full name</li>
+      <li>Email address</li>
+      <li>Phone number</li>
+      <li>Country of residence</li>
+      <li>Identification documents (passport/NIC) — provided at check-in</li>
+      <li>Payment information (processed securely via PayHere; we do not store card details)</li>
+      <li>Special requests or preferences</li>
+    </ul>
+    <h3 className="font-semibold text-[#1a1464] mt-4">1.2 Automatically Collected Information</h3>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Browser type and version</li>
+      <li>IP address</li>
+      <li>Pages visited and time spent on our site</li>
+      <li>Referring website</li>
+      <li>Device information</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">2. How We Use Your Information</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>To process and manage your room reservations</li>
+      <li>To communicate booking confirmations, reminders, and updates via SMS and email</li>
+      <li>To process payments through our secure payment gateway</li>
+      <li>To respond to enquiries submitted through our contact form</li>
+      <li>To improve our website, services, and guest experience</li>
+      <li>To comply with legal obligations</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">3. Data Sharing</h2>
+    <p>We do not sell, trade, or rent your personal information. We may share data with:</p>
+    <ul className="list-disc pl-6 space-y-1">
+      <li><strong>Payment processors</strong> (PayHere) — to process transactions securely</li>
+      <li><strong>SMS/Email service providers</strong> — to send booking confirmations</li>
+      <li><strong>Legal authorities</strong> — when required by law or to protect our rights</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">4. Data Security</h2>
+    <p>We implement industry-standard security measures to protect your personal information, including SSL encryption, secure servers, and restricted access controls. However, no method of transmission over the internet is 100% secure.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">5. Cookies</h2>
+    <p>Our website may use cookies to enhance your browsing experience. These are small files stored on your device that help us understand usage patterns and improve our services. You can manage cookie preferences through your browser settings.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">6. Third-Party Links</h2>
+    <p>Our website may contain links to third-party sites (e.g., Google Maps, payment gateways). We are not responsible for the privacy practices of these external sites.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">7. Data Retention</h2>
+    <p>We retain your personal information for as long as necessary to fulfil the purposes outlined in this policy, or as required by law. Guest records are retained for a minimum of 2 years for operational and legal purposes.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">8. Your Rights</h2>
+    <p>You have the right to:</p>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Access your personal data held by us</li>
+      <li>Request correction of inaccurate data</li>
+      <li>Request deletion of your data (subject to legal retention requirements)</li>
+      <li>Withdraw consent for marketing communications</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">9. Children's Privacy</h2>
+    <p>Our services are not directed to individuals under 18. We do not knowingly collect personal information from children without parental consent.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">10. Contact Us</h2>
+    <p>For any privacy-related enquiries or requests:<br/><strong>Kreation Hotels Pvt Ltd</strong><br/>No.5, Palmyrah Avenue, Colombo 03, Sri Lanka<br/>Phone: 0112 301737</p>
+  </PolicyPage>
+);
+
+/* ════════════ TERMS & CONDITIONS ════════════ */
+const TermsConditions = () => (
+  <PolicyPage title="Terms & Conditions">
+    <p className="text-gray-500 text-xs">Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+
+    <p>Welcome to Kreation Hotels. These Terms and Conditions ("Terms") govern your use of our website and the services provided by <strong>Kreation Hotels Pvt Ltd</strong>. By making a reservation or using our services, you agree to these Terms in full.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">1. About Us</h2>
+    <p>Kreation Hotels Pvt Ltd operates a boutique hotel with 15 rooms and a restaurant at No.5, Palmyrah Avenue, Colombo 03, Sri Lanka. Contact: 0112 301737.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">2. Reservations</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>All reservations are subject to availability.</li>
+      <li>A reservation is confirmed only upon successful receipt of the advance payment (minimum 30% of total room charges).</li>
+      <li>During the booking process, the selected room is held for <strong>5 minutes</strong> to complete payment. If payment is not received within this period, the hold is released automatically.</li>
+      <li>Booking confirmation will be sent via SMS and email to the contact details provided.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">3. Check-in & Check-out</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li><strong>Check-in time:</strong> 12:30 PM</li>
+      <li><strong>Check-out time:</strong> 11:30 AM (next day)</li>
+      <li>Guests must present a valid photo ID (NIC or Passport) at check-in.</li>
+      <li>Early check-in and late check-out are subject to availability and may incur additional charges.</li>
+      <li>The remaining balance must be settled at check-in if only the advance payment was made online.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">4. Payment</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Online payments are processed securely through the <strong>PayHere</strong> payment gateway.</li>
+      <li>We accept Visa, MasterCard, and local bank transfers via PayHere.</li>
+      <li>All prices are in <strong>Sri Lankan Rupees (LKR)</strong>.</li>
+      <li>Kreation Hotels does not store credit/debit card details. All payment data is handled by PayHere in compliance with PCI DSS standards.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">5. Cancellation & Refunds</h2>
+    <p>Please refer to our <a href="/refund-policy" className="text-[#e41e2e] font-semibold hover:underline">Refund & Cancellation Policy</a> for detailed terms regarding cancellations, modifications, and refunds.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">6. Guest Conduct</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Guests are expected to conduct themselves in a respectful manner during their stay.</li>
+      <li>Any damage to hotel property caused by guests will be charged to the guest's account.</li>
+      <li>Smoking is prohibited in all indoor areas. Designated smoking areas are available.</li>
+      <li>The hotel reserves the right to refuse service or terminate a guest's stay in the event of misconduct, illegal activity, or violation of hotel policies.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">7. Restaurant</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Our on-site restaurant serves Sri Lankan and international cuisine.</li>
+      <li>Restaurant charges may be added to the room bill at the guest's request and must be settled at checkout.</li>
+      <li>The restaurant reserves the right to refuse service.</li>
+      <li>Food allergies and dietary requirements should be communicated to the staff prior to ordering.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">8. Liability</h2>
+    <ul className="list-disc pl-6 space-y-1">
+      <li>Kreation Hotels shall not be liable for any loss, theft, or damage to guest belongings during their stay.</li>
+      <li>Guests are advised to use the in-room safe for valuables.</li>
+      <li>The hotel is not responsible for any injury or accident caused by the guest's own negligence.</li>
+      <li>Our total liability for any claim shall not exceed the amount paid for the reservation.</li>
+    </ul>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">9. Intellectual Property</h2>
+    <p>All content on this website, including text, images, logos, and design, is the property of Kreation Hotels Pvt Ltd and is protected by copyright laws. Reproduction without written consent is prohibited.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">10. Governing Law</h2>
+    <p>These Terms shall be governed by and construed in accordance with the laws of Sri Lanka. Any disputes arising from these Terms shall be subject to the exclusive jurisdiction of the courts of Sri Lanka.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">11. Changes to Terms</h2>
+    <p>We reserve the right to update or modify these Terms at any time. Changes will be effective immediately upon posting on our website. Continued use of our services constitutes acceptance of the revised Terms.</p>
+
+    <h2 className="text-lg sm:text-xl ws-serif font-bold text-[#1a1464] mt-8">12. Contact Us</h2>
+    <p><strong>Kreation Hotels Pvt Ltd</strong><br/>No.5, Palmyrah Avenue, Colombo 03, Sri Lanka<br/>Phone: 0112 301737</p>
+  </PolicyPage>
+);
+
 /* ════════════ MAIN WEBSITE ════════════ */
-const Website = () => {
+const Website = ({ page }) => {
   const [rooms, setRooms] = useState([]);
   const [hotelInfo, setHotelInfo] = useState(null);
   const [showBooking, setShowBooking] = useState(false);
@@ -582,6 +817,11 @@ const Website = () => {
     setBookingDates({ checkIn: ci, checkOut: co });
     setShowBooking(true);
   };
+
+  // Policy pages
+  if (page === "refund") return <RefundPolicy />;
+  if (page === "privacy") return <PrivacyPolicy />;
+  if (page === "terms") return <TermsConditions />;
 
   return (
     <div className="bg-white min-h-screen" style={{ fontFamily: FONT_SANS }}>
