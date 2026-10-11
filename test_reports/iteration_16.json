@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 16: Verified CRM availability bug fix /api/rooms/availability/check (string-vs-datetime) + booking modal UX improvements (auto-checkout, min attr, filtered room dropdown) + public footer MountEdgeTech animated button. Backend: 8/8 pytest tests pass (future dates return 10 Double rooms; string-format CRM booking correctly excludes room via Python-side normalization; non-overlap range still includes room; invalid/bad date formats return 400; public /api/public/availability works; pymongo==4.8.0 pinned; / returns 200; admin/admin123 login works). Frontend Playwright confirmed: (1) footer renders gradient MountEdgeTech button linking to https://mountedgetech.lk/ with target=_blank and linear-gradient style, (2) New Booking modal from Dashboard: entering check-in=2026-12-20 auto-sets checkout to 2026-12-21, (3) checkout min attribute equals check-in date, (4) room dropdown populates with 10 available rooms (101-302) for future dates (2026-12-20..22), (5) changing check-in to 2027-01-15 auto-shifts checkout to 2027-01-16 as checkout <= new check-in. All functional outcomes verified end-to-end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "New Booking modal / Dashboard Check Room Availability", "issues": ["Date inputs use browser native date picker (mm/dd/yyyy) instead of shadcn Calendar/Popover — minor UX inconsistency, carried over from iteration 15."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_crm_availability_check.py",
+    "/app/test_reports/pytest/iteration_16.xml"
+  ],
+  "action_items": [
+    "No action required — all requested bug fixes verified working.",
+    "Optional: In App.js handleBookingFieldChange, the check-in onChange schedules a setTimeout(..., 100) that calls handleBookingFieldChange('check_out_date', ...). Because handleBookingFieldChange reads newBookingData from the closure captured at the time of scheduling (not the latest state), the second invocation can clobber other fields that were updated between schedule and fire. Prefer the functional setState form (setNewBookingData(prev => ...)) or compute both updates in a single setState call to avoid any potential stale-closure corruption."
+  ],
+  "critical_code_review_comments": [
+    "server.py check_room_availability now handles both str and datetime check_in_date/check_out_date formats — good. Consider also handling bare `date` objects (not datetime, not str) to future-proof against mixed storage types.",
+    "handleBookingFieldChange relies on `newBookingData` from closure plus setTimeout — potential stale-closure risk. Current UX behavior is correct in testing (CO auto-set + min + room filter all work), but refactoring to functional setState is safer long-term.",
+    "server.py line 3074: `except ValueError: raise HTTPException(400, 'Invalid date format')` is correct, but it also catches ValueErrors from downstream code — scope it to the datetime.strptime calls specifically for clarity."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_crm_availability_check.py (new regression suite for CRM availability fix)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (all requested checks)"},
+  "test_credentials": "admin/admin123 — verified via /api/auth/login (200)",
+  "seed_data_creation": "test_crm_availability_excludes_string_date_booking inserts a TEST_-prefixed booking with STRING check_in/check_out dates and deletes it in a finally block.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite at /app/backend/tests/test_crm_availability_check.py now covers the CRM-side string-vs-datetime fix. Public-side regression stays at /app/backend/tests/test_bug_fix_future_bookings.py (iteration 15). CRM New Booking modal is accessible from Dashboard tab via the 'New Booking' button (not from Bookings tab, which is a read-only list). Hotel has 10 Double rooms (101,102,103,201-205,301,302). Use future dates (2026-12 or later) for availability tests.",
+  "rca of the issue": "Bug: GET /api/rooms/availability/check built an availability check assuming check_in_date/check_out_date in bookings were datetime objects, but CRM bookings persist them as YYYY-MM-DD strings. Mongo queries silently filtered nothing/incorrectly, so future-date bookings appeared unavailable or crashed. Fix (verified): fetch all active bookings (Upcoming/Confirmed/Checked-in/Checked In) with only room_number+dates, normalize each booking's dates in Python handling both str and datetime, then overlap-check via (bci < check_out AND bco > check_in). Regression test test_crm_availability_excludes_string_date_booking reproduces the exact failing scenario and confirms the fix works. UI improvements: check-in onChange now auto-sets checkout to next day (if checkout empty or <= new check-in); checkout input has min={check_in_date} preventing invalid ranges; room dropdown is filtered to availableRoomsForBooking (fetched from the fixed endpoint) when dates are set."
+}
