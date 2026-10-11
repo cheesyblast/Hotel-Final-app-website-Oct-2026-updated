@@ -1290,40 +1290,31 @@ const Dashboard = () => {
   };
 
   // Handle booking field changes with total calculation
-  const handleBookingFieldChange = async (field, value) => {
+  const handleBookingFieldChange = (field, value) => {
     const updatedData = { ...newBookingData, [field]: value };
+    
+    // When check-in changes, auto-fix checkout if it's empty or invalid
+    if (field === 'check_in_date' && value && updatedData.stay_type === 'Night Stay') {
+      if (!updatedData.check_out_date || updatedData.check_out_date <= value) {
+        const nextDay = new Date(value);
+        nextDay.setDate(nextDay.getDate() + 1);
+        updatedData.check_out_date = nextDay.toISOString().split('T')[0];
+      }
+    }
     
     // Calculate total booking amount when rate, dates, or stay type changes
     if (['rate_per_night', 'check_in_date', 'check_out_date', 'stay_type'].includes(field)) {
       const ratePerNight = parseFloat(updatedData.rate_per_night) || 0;
       
       if (updatedData.stay_type === 'Short Time') {
-        // For short time, use the rate as-is (single charge)
         updatedData.booking_amount = ratePerNight;
       } else if (updatedData.stay_type === 'Night Stay' && updatedData.check_in_date && updatedData.check_out_date) {
-        // For night stay, calculate based on number of nights
         const checkIn = new Date(updatedData.check_in_date);
         const checkOut = new Date(updatedData.check_out_date);
         const nights = Math.max(1, Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24)));
         updatedData.booking_amount = ratePerNight * nights;
       } else {
-        // Default to single night if dates not set
         updatedData.booking_amount = ratePerNight;
-      }
-    }
-    
-    // Update available rooms when dates change
-    if (['check_in_date', 'check_out_date', 'stay_type'].includes(field)) {
-      try {
-        const availableRooms = await getAvailableRoomsForDates(
-          updatedData.check_in_date,
-          updatedData.check_out_date
-        );
-        setAvailableRoomsForBooking(availableRooms);
-      } catch (error) {
-        console.error('Error updating available rooms:', error);
-        // Fallback to all non-occupied rooms
-        setAvailableRoomsForBooking(getAvailableRooms());
       }
     }
     
@@ -1335,7 +1326,19 @@ const Dashboard = () => {
       }
     }
     
+    // SET STATE IMMEDIATELY — dates, amount, commission update without waiting
     setNewBookingData(updatedData);
+    
+    // Fetch available rooms ASYNC after state is set (non-blocking)
+    if (['check_in_date', 'check_out_date', 'stay_type'].includes(field)) {
+      if (updatedData.check_in_date && updatedData.check_out_date && updatedData.check_out_date > updatedData.check_in_date) {
+        getAvailableRoomsForDates(updatedData.check_in_date, updatedData.check_out_date)
+          .then(rooms => setAvailableRoomsForBooking(rooms))
+          .catch(() => setAvailableRoomsForBooking(getAvailableRooms()));
+      } else {
+        setAvailableRoomsForBooking(getAvailableRooms());
+      }
+    }
   };
 
   const fetchRooms = async () => {
@@ -3492,20 +3495,7 @@ const Dashboard = () => {
                     <input
                       type="date"
                       value={newBookingData.check_in_date}
-                      onChange={(e) => {
-                        const ciVal = e.target.value;
-                        handleBookingFieldChange('check_in_date', ciVal);
-                        // Auto-set checkout to next day when check-in changes
-                        if (ciVal && newBookingData.stay_type === 'Night Stay') {
-                          const nextDay = new Date(ciVal);
-                          nextDay.setDate(nextDay.getDate() + 1);
-                          const nextDayStr = nextDay.toISOString().split('T')[0];
-                          // Also update checkout if it's empty or before/equal to new check-in
-                          if (!newBookingData.check_out_date || newBookingData.check_out_date <= ciVal) {
-                            setTimeout(() => handleBookingFieldChange('check_out_date', nextDayStr), 100);
-                          }
-                        }
-                      }}
+                      onChange={(e) => handleBookingFieldChange('check_in_date', e.target.value)}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-2 focus:ring-blue-500"
                       required
                     />
