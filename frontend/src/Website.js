@@ -565,8 +565,9 @@ const Footer = () => (
           <a href="/terms" className="text-white/50 hover:text-white text-xs transition-colors">Terms & Conditions</a>
         </div>
       </div>
-      <div className="border-t border-white/10 pt-4">
-        <p className="text-white/30 text-xs text-center">&copy; {new Date().getFullYear()} Kreation Hotels Pvt Ltd. All rights reserved.</p>
+      <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+        <p className="text-white/30 text-xs">&copy; {new Date().getFullYear()} Kreation Hotels Pvt Ltd. All rights reserved.</p>
+        <a href="https://mountedgetech.lk/" target="_blank" rel="noopener noreferrer" className="text-white/30 hover:text-white/60 text-xs transition-colors">Made with <span className="text-[#e41e2e]">&hearts;</span> MountEdgeTech Sri Lanka</a>
       </div>
     </div>
   </footer>

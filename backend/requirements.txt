@@ -12,7 +12,6 @@ cryptography==45.0.5
 dnspython==2.7.0
 ecdsa==0.19.1
 email_validator==2.2.0
-emergent-plugins @ file:///wheelhouse/emergent_plugins-1.0.0-py3-none-any.whl#sha256=c0f704b1f3e22b0bfa65048252154d4524b82184a05034acfd677391e1d02c6e
 fastapi==0.110.1
 flake8==7.3.0
 gitdb==4.0.12

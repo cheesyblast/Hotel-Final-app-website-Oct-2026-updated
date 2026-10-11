@@ -62,24 +62,52 @@ async def get_held_rooms_for_dates(check_in_dt, check_out_dt):
     """Get room numbers currently held for overlapping dates"""
     await cleanup_expired_holds()
     now = datetime.now(timezone.utc)
+    # Holds store dates as datetime objects
     holds = await db.booking_holds.find({
         "status": "held",
         "expires_at": {"$gt": now},
-        "$or": [
-            {"check_in": {"$lt": check_out_dt}, "check_out": {"$gt": check_in_dt}}
-        ]
+        "check_in": {"$lt": check_out_dt},
+        "check_out": {"$gt": check_in_dt}
     }).to_list(100)
     return [h.get("room_number") for h in holds]
 
 async def get_booked_rooms_for_dates(check_in_dt, check_out_dt):
-    """Get room numbers with confirmed bookings for overlapping dates"""
+    """Get room numbers with confirmed bookings for overlapping dates.
+    CRM bookings may store dates as strings (YYYY-MM-DD) or BSON datetimes.
+    We query all active bookings and filter in Python to handle both formats."""
     bookings = await db.bookings.find({
-        "status": {"$in": ["Confirmed", "Checked In"]},
-        "$or": [
-            {"check_in_date": {"$lt": check_out_dt}, "check_out_date": {"$gt": check_in_dt}}
-        ]
-    }).to_list(1000)
-    return [b.get("room_number") for b in bookings]
+        "status": {"$in": ["Confirmed", "Checked In", "Upcoming"]}
+    }, {"room_number": 1, "check_in_date": 1, "check_out_date": 1, "_id": 0}).to_list(5000)
+
+    ci_date = check_in_dt.date() if isinstance(check_in_dt, datetime) else check_in_dt
+    co_date = check_out_dt.date() if isinstance(check_out_dt, datetime) else check_out_dt
+    booked = []
+    for b in bookings:
+        bci = b.get("check_in_date")
+        bco = b.get("check_out_date")
+        # Normalise to date objects
+        if isinstance(bci, str):
+            try:
+                bci = datetime.strptime(bci[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                continue
+        elif isinstance(bci, datetime):
+            bci = bci.date()
+        else:
+            continue
+        if isinstance(bco, str):
+            try:
+                bco = datetime.strptime(bco[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                continue
+        elif isinstance(bco, datetime):
+            bco = bco.date()
+        else:
+            continue
+        # Overlap: bci < co_date AND bco > ci_date
+        if bci < co_date and bco > ci_date:
+            booked.append(b.get("room_number"))
+    return booked
 
 def generate_payhere_hash(merchant_id, order_id, amount, currency, merchant_secret):
     """Generate PayHere payment hash"""
@@ -319,6 +347,11 @@ async def payhere_payment_notify(request: Request):
 
         # Create actual booking in the CRM
         booking_id = str(uuid.uuid4())
+        # Store dates as YYYY-MM-DD strings to match CRM format
+        ci_raw = hold.get("check_in")
+        co_raw = hold.get("check_out")
+        ci_str = ci_raw.strftime("%Y-%m-%d") if isinstance(ci_raw, datetime) else str(ci_raw)[:10]
+        co_str = co_raw.strftime("%Y-%m-%d") if isinstance(co_raw, datetime) else str(co_raw)[:10]
         booking = {
             "id": booking_id,
             "guest_name": hold.get("guest_name", ""),
@@ -328,8 +361,8 @@ async def payhere_payment_notify(request: Request):
             "id_passport": "",
             "room_number": hold.get("room_number", ""),
             "room_type": hold.get("room_type", ""),
-            "check_in_date": hold.get("check_in"),
-            "check_out_date": hold.get("check_out"),
+            "check_in_date": ci_str,
+            "check_out_date": co_str,
             "num_guests": hold.get("num_guests", 1),
             "stay_type": "Full Day",
             "booking_amount": hold.get("total_amount", 0),
