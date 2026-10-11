@@ -15020,7 +15020,7 @@ function App() {
     );
   }
 
-  // Public domain: hotel website
+  // Public domain: hotel website + CRM accessible at sub-routes
   return (
     <BrowserRouter>
       <Routes>
@@ -15029,7 +15029,16 @@ function App() {
         <Route path="/refund-policy" element={<Website page="refund" />} />
         <Route path="/privacy-policy" element={<Website page="privacy" />} />
         <Route path="/terms" element={<Website page="terms" />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* CRM routes (auth-protected) — needed for preview/testing */}
+        <Route path="/*" element={
+          <FinancialProvider>
+            <AuthProvider>
+              <ProtectedRoute>
+                <AppContent />
+              </ProtectedRoute>
+            </AuthProvider>
+          </FinancialProvider>
+        } />
       </Routes>
     </BrowserRouter>
   );
