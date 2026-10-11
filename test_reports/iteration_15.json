@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 15: Verified bug fix for future-bookings availability on public website. All 13 pytest tests pass (100% backend) covering: (1) GET /api/public/availability with future dates 2026-12-20..22 returns 10 available Double rooms, (2) POST /api/public/booking/hold creates a 5-min hold with correct 30% advance payment and PayHere hash, (3) injected CRM-style booking with YYYY-MM-DD *string* check_in_date correctly excludes the room from availability (this is the exact scenario the fix addresses) while leaving non-overlapping dates untouched, (4) held rooms are excluded from availability, (5) requirements.txt pins pymongo==4.8.0 with no wheelhouse/emergent_plugins references, (6) /, /website, /refund-policy, /privacy-policy, /terms all return 200 and /website redirects to /, (7) CRM /api/auth/login with admin/admin123 succeeds. Playwright confirmed footer renders 'Made with ♥ MountEdgeTech Sri Lanka' anchored to https://mountedgetech.lk/ (opens in new tab) and Refund/Privacy/Terms footer links are present. CRM /dashboard loads and admin login works.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Hero booking bar (/)", "issues": ["Date inputs use the browser's native date picker (mm/dd/yyyy) rather than the shadcn Calendar/Popover. Minor UX inconsistency with the rest of the design system; not a bug."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_bug_fix_future_bookings.py",
+    "/app/test_reports/pytest/iteration_15.xml"
+  ],
+  "action_items": [
+    "No action required - bug fix verified. Optional: swap native <input type=date> on the hero for the shadcn Calendar for visual consistency."
+  ],
+  "critical_code_review_comments": [
+    "public_routes.py now defensively normalizes bci/bco from either str or datetime - good. Consider also handling date objects explicitly (date without time) in case CRM stores pure date; currently a bare date would hit the 'else: continue' branch and silently skip the booking.",
+    "booking_holds still store check_in/check_out as naive datetime (datetime.strptime without tz), while expires_at is tz-aware UTC. Not a correctness bug for overlap logic but should be made consistent.",
+    "payhere/notify writes check_in_date as YYYY-MM-DD string - good alignment with CRM. However customers collection still stores raw datetime from the hold - minor inconsistency."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bug_fix_future_bookings.py (new regression suite)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all requested checks)"},
+  "test_credentials": "admin/admin123 - verified against /api/auth/login (200)",
+  "seed_data_creation": "Each test inserts and deletes its own TEST_-prefixed booking/hold documents (cleaned up in finally blocks).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite at /app/backend/tests/test_bug_fix_future_bookings.py covers the string-vs-datetime date normalization fix. If date objects (not str, not datetime) ever appear in bookings, add a date-type branch in get_booked_rooms_for_dates. Preview host does not match /^app\\./ so / renders the public Website. CRM is at /dashboard. Future test dates should be 2026-12-* or later.",
+  "rca of the issue": "Bug: get_booked_rooms_for_dates() built a MongoDB query using Python datetime objects against check_in_date/check_out_date fields that CRM stored as YYYY-MM-DD strings. The $lt/$gt comparisons silently mismatched types, so the overlap filter effectively returned nothing on some queries and crashed overall availability for future dates. Fix (verified): fetch all active bookings (Confirmed/Checked In/Upcoming) with only room_number+dates, normalize each booking's dates in Python handling both str and datetime, then do overlap detection via (bci < co_date AND bco > ci_date). Additionally payhere/notify now writes check_in_date/check_out_date as YYYY-MM-DD strings matching CRM. Regression test test_crm_string_date_booking_excludes_room reproduces the exact failing scenario and confirms the fix works."
+}
