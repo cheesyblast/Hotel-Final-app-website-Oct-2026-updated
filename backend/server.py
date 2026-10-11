@@ -3014,50 +3014,36 @@ async def check_room_availability(
         if check_in >= check_out:
             raise HTTPException(status_code=400, detail="Check-out date must be after check-in date")
         
-        if check_in < datetime.now().date():
-            raise HTTPException(status_code=400, detail="Check-in date cannot be in the past")
-        
-        # Convert dates to datetime for database queries
-        check_in_datetime = datetime.combine(check_in, datetime.min.time())
-        check_out_datetime = datetime.combine(check_out, datetime.min.time())
-        
         # Get all rooms
         all_rooms = await db.rooms.find().to_list(1000)
         
-        # Find conflicting bookings (bookings that overlap with requested dates)
-        conflicting_bookings = await db.bookings.find({
-            "$and": [
-                {"status": {"$in": ["Upcoming", "Checked-in", "Checked In"]}},
-                {
-                    "$or": [
-                        # Booking starts during requested period
-                        {
-                            "$and": [
-                                {"check_in_date": {"$gte": check_in_datetime}},
-                                {"check_in_date": {"$lt": check_out_datetime}}
-                            ]
-                        },
-                        # Booking ends during requested period
-                        {
-                            "$and": [
-                                {"check_out_date": {"$gt": check_in_datetime}},
-                                {"check_out_date": {"$lte": check_out_datetime}}
-                            ]
-                        },
-                        # Booking encompasses requested period
-                        {
-                            "$and": [
-                                {"check_in_date": {"$lte": check_in_datetime}},
-                                {"check_out_date": {"$gte": check_out_datetime}}
-                            ]
-                        }
-                    ]
-                }
-            ]
-        }).to_list(1000)
+        # Find conflicting bookings — handle both string and datetime date formats
+        all_bookings = await db.bookings.find({
+            "status": {"$in": ["Upcoming", "Confirmed", "Checked-in", "Checked In"]}
+        }, {"room_number": 1, "check_in_date": 1, "check_out_date": 1, "_id": 0}).to_list(5000)
         
-        # Get room numbers that are booked during the requested period
-        booked_room_numbers = {booking['room_number'] for booking in conflicting_bookings}
+        booked_room_numbers = set()
+        for booking in all_bookings:
+            bci = booking.get("check_in_date")
+            bco = booking.get("check_out_date")
+            # Normalise to date objects
+            if isinstance(bci, str):
+                try: bci = datetime.strptime(bci[:10], "%Y-%m-%d").date()
+                except (ValueError, TypeError): continue
+            elif isinstance(bci, datetime):
+                bci = bci.date()
+            else:
+                continue
+            if isinstance(bco, str):
+                try: bco = datetime.strptime(bco[:10], "%Y-%m-%d").date()
+                except (ValueError, TypeError): continue
+            elif isinstance(bco, datetime):
+                bco = bco.date()
+            else:
+                continue
+            # Overlap check: bci < check_out AND bco > check_in
+            if bci < check_out and bco > check_in:
+                booked_room_numbers.add(booking.get("room_number"))
         
         # Filter available rooms
         available_rooms = []

@@ -3493,13 +3493,17 @@ const Dashboard = () => {
                       type="date"
                       value={newBookingData.check_in_date}
                       onChange={(e) => {
-                        handleBookingFieldChange('check_in_date', e.target.value);
-                        // Auto-set checkout to next day
-                        if (e.target.value && newBookingData.stay_type === 'Night Stay') {
-                          const nextDay = new Date(e.target.value);
+                        const ciVal = e.target.value;
+                        handleBookingFieldChange('check_in_date', ciVal);
+                        // Auto-set checkout to next day when check-in changes
+                        if (ciVal && newBookingData.stay_type === 'Night Stay') {
+                          const nextDay = new Date(ciVal);
                           nextDay.setDate(nextDay.getDate() + 1);
                           const nextDayStr = nextDay.toISOString().split('T')[0];
-                          setTimeout(() => handleBookingFieldChange('check_out_date', nextDayStr), 50);
+                          // Also update checkout if it's empty or before/equal to new check-in
+                          if (!newBookingData.check_out_date || newBookingData.check_out_date <= ciVal) {
+                            setTimeout(() => handleBookingFieldChange('check_out_date', nextDayStr), 100);
+                          }
                         }
                       }}
                       className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:ring-2 focus:ring-blue-500"

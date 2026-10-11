@@ -565,9 +565,18 @@ const Footer = () => (
           <a href="/terms" className="text-white/50 hover:text-white text-xs transition-colors">Terms & Conditions</a>
         </div>
       </div>
-      <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+      <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row justify-between items-center gap-3">
         <p className="text-white/30 text-xs">&copy; {new Date().getFullYear()} Kreation Hotels Pvt Ltd. All rights reserved.</p>
-        <a href="https://mountedgetech.lk/" target="_blank" rel="noopener noreferrer" className="text-white/30 hover:text-white/60 text-xs transition-colors">Made with <span className="text-[#e41e2e]">&hearts;</span> MountEdgeTech Sri Lanka</a>
+        <a href="https://mountedgetech.lk/" target="_blank" rel="noopener noreferrer"
+          className="group relative inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold text-white overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/30 hover:scale-105"
+          style={{ background: 'linear-gradient(135deg, #6366f1, #ec4899, #f59e0b)' }}>
+          <span className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" style={{ background: 'linear-gradient(135deg, #f59e0b, #ec4899, #6366f1)' }} />
+          <span className="relative flex items-center gap-1.5">
+            <span className="inline-block animate-pulse">&#9829;</span>
+            Made with MountEdgeTech Sri Lanka
+            <svg className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+          </span>
+        </a>
       </div>
     </div>
   </footer>
