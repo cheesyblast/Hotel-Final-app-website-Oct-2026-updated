@@ -31,10 +31,19 @@ const FONT_SANS = "'DM Sans', system-ui, sans-serif";
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [policiesOpen, setPoliciesOpen] = useState(false);
+  const [mobilePoliciesOpen, setMobilePoliciesOpen] = useState(false);
+  const policiesRef = useRef(null);
   useEffect(() => { const h = () => setScrolled(window.scrollY > 40); window.addEventListener("scroll", h); return () => window.removeEventListener("scroll", h); }, []);
+  useEffect(() => { const h = (e) => { if (policiesRef.current && !policiesRef.current.contains(e.target)) setPoliciesOpen(false); }; document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h); }, []);
   const links = [
     { label: "Home", to: "hero" }, { label: "Rooms", to: "rooms" },
     { label: "Gallery", to: "gallery" }, { label: "About", to: "about" }, { label: "Contact", to: "contact" },
+  ];
+  const policyLinks = [
+    { label: "Refund Policy", href: "/refund-policy" },
+    { label: "Privacy Policy", href: "/privacy-policy" },
+    { label: "Terms & Conditions", href: "/terms" },
   ];
   return (
     <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${scrolled ? "bg-white shadow-md" : "bg-white/80 backdrop-blur-sm"}`}>
@@ -48,7 +57,22 @@ const Navbar = () => {
               {l.label}
             </button>
           ))}
-          <button onClick={() => scrollTo("hero")} className="bg-[#e41e2e] hover:bg-[#c91826] text-white px-5 py-2 text-sm font-bold uppercase tracking-wider transition-colors">
+          {/* Policies Dropdown */}
+          <div className="relative" ref={policiesRef}>
+            <button onClick={() => setPoliciesOpen(!policiesOpen)}
+              className="text-[#1a1464] hover:text-[#e41e2e] transition-colors text-sm tracking-wider uppercase font-semibold flex items-center gap-1">
+              Policies
+              <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${policiesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {policiesOpen && (
+              <div className="absolute right-0 mt-3 w-56 bg-white rounded-lg shadow-xl border border-gray-100 py-2 overflow-hidden">
+                {policyLinks.map((p) => (
+                  <a key={p.href} href={p.href} className="block px-5 py-2.5 text-sm text-gray-700 hover:bg-[#1a1464]/5 hover:text-[#1a1464] transition-colors font-medium">{p.label}</a>
+                ))}
+              </div>
+            )}
+          </div>
+          <button onClick={() => scrollTo("hero")} className="bg-[#e41e2e] hover:bg-[#c91826] text-white px-5 py-2 text-sm font-bold uppercase tracking-wider transition-colors rounded">
             Book Now
           </button>
         </div>
@@ -61,7 +85,19 @@ const Navbar = () => {
           {links.map((l) => (
             <button key={l.to} onClick={() => { scrollTo(l.to); setOpen(false); }} className="block w-full text-left px-6 py-3 text-[#1a1464] hover:text-[#e41e2e] text-sm uppercase tracking-wider font-medium">{l.label}</button>
           ))}
-          <div className="px-6 pt-2"><button onClick={() => { scrollTo("hero"); setOpen(false); }} className="w-full bg-[#e41e2e] text-white py-2 text-sm font-bold uppercase tracking-wider">Book Now</button></div>
+          {/* Mobile Policies Accordion */}
+          <button onClick={() => setMobilePoliciesOpen(!mobilePoliciesOpen)} className="w-full text-left px-6 py-3 text-[#1a1464] hover:text-[#e41e2e] text-sm uppercase tracking-wider font-medium flex justify-between items-center">
+            Policies
+            <svg className={`w-4 h-4 transition-transform ${mobilePoliciesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+          </button>
+          {mobilePoliciesOpen && (
+            <div className="bg-gray-50">
+              {policyLinks.map((p) => (
+                <a key={p.href} href={p.href} className="block px-10 py-2.5 text-sm text-gray-600 hover:text-[#1a1464] font-medium">{p.label}</a>
+              ))}
+            </div>
+          )}
+          <div className="px-6 pt-2"><button onClick={() => { scrollTo("hero"); setOpen(false); }} className="w-full bg-[#e41e2e] text-white py-2 text-sm font-bold uppercase tracking-wider rounded">Book Now</button></div>
         </div>
       )}
     </nav>
@@ -552,20 +588,52 @@ const Contact = ({ hotelInfo }) => {
 
 /* ════════════ FOOTER ════════════ */
 const Footer = () => (
-  <footer className="bg-[#1a1464] py-12">
-    <div className="max-w-7xl mx-auto px-6">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
-        <div className="flex items-center space-x-4">
-          <img src={LOGO_URL} alt="Kreation Hotels" className="h-10 brightness-0 invert" />
-          <div className="text-left"><p className="text-white/60 text-xs">No.5, Palmyrah Avenue, Colombo 03</p><p className="text-white/60 text-xs">+94 112 301737</p></div>
+  <footer className="bg-[#0e0b30] text-white">
+    {/* Main footer */}
+    <div className="max-w-7xl mx-auto px-6 pt-16 pb-10">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-8">
+        {/* Brand */}
+        <div className="sm:col-span-2 lg:col-span-1">
+          <img src={LOGO_URL} alt="Kreation Hotels" className="h-12 brightness-0 invert mb-4" />
+          <p className="text-white/50 text-sm leading-relaxed max-w-xs">A boutique hotel blending colonial charm with modern luxury in the heart of Colombo 03.</p>
         </div>
-        <div className="flex flex-wrap justify-center gap-4 sm:gap-6">
-          <a href="/refund-policy" className="text-white/50 hover:text-white text-xs transition-colors">Refund Policy</a>
-          <a href="/privacy-policy" className="text-white/50 hover:text-white text-xs transition-colors">Privacy Policy</a>
-          <a href="/terms" className="text-white/50 hover:text-white text-xs transition-colors">Terms & Conditions</a>
+        {/* Quick Links */}
+        <div>
+          <h4 className="text-white font-semibold text-sm uppercase tracking-wider mb-4">Quick Links</h4>
+          <ul className="space-y-2.5">
+            {[{l:"Home",t:"hero"},{l:"Rooms",t:"rooms"},{l:"Gallery",t:"gallery"},{l:"About",t:"about"},{l:"Contact",t:"contact"}].map(n => (
+              <li key={n.t}><button onClick={() => scrollTo(n.t)} className="text-white/50 hover:text-white text-sm transition-colors">{n.l}</button></li>
+            ))}
+          </ul>
+        </div>
+        {/* Policies */}
+        <div>
+          <h4 className="text-white font-semibold text-sm uppercase tracking-wider mb-4">Policies</h4>
+          <ul className="space-y-2.5">
+            <li><a href="/refund-policy" className="text-white/50 hover:text-white text-sm transition-colors">Refund Policy</a></li>
+            <li><a href="/privacy-policy" className="text-white/50 hover:text-white text-sm transition-colors">Privacy Policy</a></li>
+            <li><a href="/terms" className="text-white/50 hover:text-white text-sm transition-colors">Terms & Conditions</a></li>
+          </ul>
+        </div>
+        {/* Contact */}
+        <div>
+          <h4 className="text-white font-semibold text-sm uppercase tracking-wider mb-4">Contact</h4>
+          <ul className="space-y-3">
+            <li className="flex items-start gap-3">
+              <svg className="w-4 h-4 text-[#e41e2e] mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
+              <span className="text-white/50 text-sm">No.5, Palmyrah Avenue,<br/>Colombo 03, Sri Lanka</span>
+            </li>
+            <li className="flex items-center gap-3">
+              <svg className="w-4 h-4 text-[#e41e2e] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+              <span className="text-white/50 text-sm">+94 112 301737</span>
+            </li>
+          </ul>
         </div>
       </div>
-      <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+    </div>
+    {/* Bottom bar */}
+    <div className="border-t border-white/10">
+      <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
         <p className="text-white/30 text-xs">&copy; {new Date().getFullYear()} Kreation Hotels Pvt Ltd. All rights reserved.</p>
         <a href="https://mountedgetech.lk/" target="_blank" rel="noopener noreferrer"
           className="group relative inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold text-white overflow-hidden transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/30 hover:scale-105"
