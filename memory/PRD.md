@@ -86,3 +86,9 @@ Full-stack hotel management system (CRM) + Public hotel website with online book
 - Public site: react-helmet-async 3.0.0 (React 19 native hoisting) via `SeoHead.js`; JSON-LD `#seo-jsonld`. New routes /rooms /gallery /about /contact scroll to sections.
 - Production: website backend root router serves /sitemap.xml, /robots.txt and SSR-injected page HTML (nginx website.conf updated); shared `uploads` volume; env UPLOAD_DIR, WEBSITE_INDEX_URL. extract.sh rewritten to copy the full frontend for both CRM and website builds (old version was broken).
 - Tested: iteration_20 (backend 16/16; frontend ~95% → minor issues fixed after).
+
+## 2026-06 — SEO v2 + Analytics
+- seo_settings.pages is now a list [{path,label,title,description}] (legacy dict auto-migrated); Home pinned; add/delete custom pages; public routes, nav/footer, sitemap and SSR all driven by `/api/public/seo/site-config`. Custom pages render home + scroll to same-id section; deleted → redirect /.
+- Canonical: empty or emergentagent.com-on-live → request host / ?origin=window.location.origin. og/twitter image always absolute.
+- Analytics inside SEO tab: ga4_id, gtm_id, pixel_id, head_code, body_code (validated). Public site only: SSR injection (marker meta[data-seo-tracking]) or client injection (`tracking.js`). Purchase event (GA4 + dataLayer + fbq Purchase, LKR, value = PayHere paid_amount) fires only for confirmed orders, deduped per order.
+- Tested: iteration_21 (backend 28/28, frontend pass; purchase-on-unconfirmed bug fixed after).

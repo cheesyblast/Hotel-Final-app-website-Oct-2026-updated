@@ -165,7 +165,7 @@ def _request_origin(request: Request = None, origin: str = None) -> str:
         return origin.rstrip("/")
     if request is None:
         return os.environ.get("PUBLIC_WEBSITE_URL", "").rstrip("/")
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host", "")).split(",")[0].strip()
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
     if not host.startswith(("localhost", "127.0.0.1")):
         proto = "https"

@@ -1,0 +1,37 @@
+{
+  "summary": "Tested SEO v2 (dynamic page list, analytics/tracking, canonical fallback, absolute og:image, purchase tracking). Backend: 28/28 pytest pass (validation of paths/duplicates/IDs -> 422, Home forced first, legacy dict -> list migration, site-config, meta for custom/deleted pages, sitemap exact list, robots, Host-header canonical fallback, emergentagent canonical ignored on live host, ?origin=, SSR render tracking injection, booking/status paid_amount+currency). Frontend CRM: page cards (home locked, no delete), add page, slugify on blur, empty-name/invalid-path/bad GA4 errors block save, delete with confirm, analytics fields (uppercase/trim, red format error), persistence after reload all work; CRM /dashboard has no gtag/fbq/snippets. Public site: /dining renders home with its custom title; deleted /gallery and /privacy-policy redirect to /; Gallery nav scrolls to section on home (from / and /rooms); deleted privacy policy hidden in nav dropdown + footer; og:image/twitter:image absolute https; gtag/fbq/GTM/head+body snippets injected client-side (marker content=client). Purchase: dataLayer purchase event + gtag event + fbq Purchase fired with value=paid_amount (9450), currency LKR, transaction_id=order; reload does not re-fire. One HIGH bug: purchase fires for non-confirmed (payment_failed) orders.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "_request_origin (seo_routes.py)", "issue": "x-forwarded-host may be a comma-separated list behind multiple proxies; it is used raw (e.g. 'a.com, b.com'). Take the first value. Host header is client-controlled when canonical_url is empty (cache poisoning risk if a CDN caches HTML) - recommend setting canonical_url in production."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Purchase tracking (Website.js trackConfirmedPurchase)", "issue": "When status is not 'confirmed' after 5 polls (~10s) the code still fires purchase using payment_amount. Reproduced: hold WEB-77DDFBBB with status=payment_failed, opened /?booking=success&order=WEB-77DDFBBB -> dataLayer purchase {value:9500} fired and order stored in tracked_purchase_orders. Also any visitor can craft ?booking=success&order=<any held order> and inflate GA4/Meta revenue. Fix: only call trackPurchase when data.status === 'confirmed' (keep polling longer, e.g. up to 30-60s, but never fire for held/expired/payment_failed).", "affected_selectors": ["window.dataLayer", "localStorage.tracked_purchase_orders"]}
+    ],
+    "design_issues": [
+      {"screen": "Booking success modal", "issues": ["'Booking Confirmed!' is shown for any ?booking=success URL even if the order status is payment_failed (pre-existing; consider showing status from /booking/status)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration_21_seo_pages_analytics.py", "/app/test_reports/pytest/pytest_iter21.xml"],
+  "action_items": [
+    "HIGH: In Website.js trackConfirmedPurchase, fire trackPurchase only when status === 'confirmed'; do not fall back after max attempts for held/payment_failed/expired orders",
+    "LOW: Use first value of x-forwarded-host in _request_origin"
+  ],
+  "critical_code_review_comments": [
+    "trackConfirmedPurchase fallback (attempt >= 5) fires revenue events for unpaid orders - see integration issue",
+    "tracking_head_html always emits the data-seo-tracking marker even with no IDs set - fine, but means client never injects if SSR ran (intended)",
+    "PageCard uses key={idx}; controlled inputs so no visible bug, but a stable key (e.g. generated id) is safer when deleting middle items",
+    "Per-card inline validation is not shown for invalid path/empty name - only the bottom seo-save-status message; with many cards the user may not see which card is wrong (consider highlighting the card)",
+    "App.js is ~15k lines - should be split into modules"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration_21_seo_pages_analytics.py"],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "95% (all requested flows pass; 1 bug in purchase tracking for non-confirmed orders)"},
+  "seed_data_creation": "Created holds WEB-1F176C2E (confirmed, paid_amount 9450) and WEB-77DDFBBB (payment_failed) - both deleted. No bookings/customers created (notify webhook bypassed via Mongo).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run REACT_APP_BACKEND_URL=... pytest /app/backend/tests/test_iteration_21_seo_pages_analytics.py (uses pymongo on backend/.env MONGO_URL for legacy-migration and booking status tests; teardown resets pages to 8 defaults and clears tracking/canonical - note it resets page titles too and og_image may be changed by the tests; original og_image was /api/public/seo/media/ad526d6c8b0b43469d2b5e54062010f5.png and /rooms had a custom title 'Rooms & Suites in Colombo | Kreation Hotels'). Final state restored: 8 default pages (with /rooms override), tracking empty, canonical empty, robots_index true, og_image restored, preview_site_mode=crm. To check fbq queue in Playwright, route connect.facebook.net to an empty script so the queue isn't drained.",
+  "test_credentials": "admin / admin123 (from /app/memory/test_credentials.md)"
+}

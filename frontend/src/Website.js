@@ -41,13 +41,14 @@ const scrollTo = (id) => { const el = document.getElementById(id); if (el) el.sc
 const trackConfirmedPurchase = async (order, attempt = 0) => {
   try {
     const { data } = await axios.get(`${API}/public/booking/status/${order}`);
-    if (data.status === "confirmed" || attempt >= 5) {
+    if (data.status === "confirmed") {
       const value = Number(data.paid_amount ?? data.payment_amount ?? 0);
       if (value > 0) trackPurchase({ transaction_id: data.order_id, value, currency: "LKR", item_name: data.room_type });
       return;
     }
-  } catch (e) { if (attempt >= 5) return; }
-  setTimeout(() => trackConfirmedPurchase(order, attempt + 1), 2000);
+    if (data.status !== "held") return; // payment_failed / expired / cancelled: never report revenue
+  } catch (e) { if (e.response?.status === 404) return; }
+  if (attempt < 20) setTimeout(() => trackConfirmedPurchase(order, attempt + 1), 3000);
 };
 
 /* ──────── BRAND COLORS ──────── */
