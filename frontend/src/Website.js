@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { Link, useNavigate } from "react-router-dom";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -19,6 +20,7 @@ const HOTEL_PHOTOS = [
 ];
 
 const formatLKR = (n) => `LKR ${(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+const SECTION_BY_PATH = { "/": "hero", "/rooms": "rooms", "/gallery": "gallery", "/about": "about", "/contact": "contact" };
 const scrollTo = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
 
 /* ──────── BRAND COLORS ──────── */
@@ -36,9 +38,11 @@ const Navbar = () => {
   const policiesRef = useRef(null);
   useEffect(() => { const h = () => setScrolled(window.scrollY > 40); window.addEventListener("scroll", h); return () => window.removeEventListener("scroll", h); }, []);
   useEffect(() => { const h = (e) => { if (policiesRef.current && !policiesRef.current.contains(e.target)) setPoliciesOpen(false); }; document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h); }, []);
+  const navigate = useNavigate();
+  const go = (path) => { if (window.location.pathname === path) scrollTo(SECTION_BY_PATH[path]); else navigate(path); };
   const links = [
-    { label: "Home", to: "hero" }, { label: "Rooms", to: "rooms" },
-    { label: "Gallery", to: "gallery" }, { label: "About", to: "about" }, { label: "Contact", to: "contact" },
+    { label: "Home", to: "/" }, { label: "Rooms", to: "/rooms" },
+    { label: "Gallery", to: "/gallery" }, { label: "About", to: "/about" }, { label: "Contact", to: "/contact" },
   ];
   const policyLinks = [
     { label: "Refund Policy", href: "/refund-policy" },
@@ -48,12 +52,12 @@ const Navbar = () => {
   return (
     <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${scrolled ? "bg-white shadow-md" : "bg-white/80 backdrop-blur-sm"}`}>
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
-        <button onClick={() => scrollTo("hero")} className="flex items-center">
+        <button onClick={() => go("/")} className="flex items-center" data-testid="nav-logo">
           <img src={LOGO_URL} alt="Kreation Hotels" className="h-12 sm:h-14" />
         </button>
         <div className="hidden md:flex items-center space-x-8">
           {links.map((l) => (
-            <button key={l.to} onClick={() => scrollTo(l.to)} className="text-[#1a1464] hover:text-[#e41e2e] transition-colors text-sm tracking-wider uppercase font-semibold">
+            <button key={l.to} onClick={() => go(l.to)} data-testid={`nav-link-${l.label.toLowerCase()}`} className="text-[#1a1464] hover:text-[#e41e2e] transition-colors text-sm tracking-wider uppercase font-semibold">
               {l.label}
             </button>
           ))}
@@ -72,7 +76,7 @@ const Navbar = () => {
               </div>
             )}
           </div>
-          <button onClick={() => scrollTo("hero")} className="bg-[#e41e2e] hover:bg-[#c91826] text-white px-5 py-2 text-sm font-bold uppercase tracking-wider transition-colors rounded">
+          <button onClick={() => go("/")} className="bg-[#e41e2e] hover:bg-[#c91826] text-white px-5 py-2 text-sm font-bold uppercase tracking-wider transition-colors rounded">
             Book Now
           </button>
         </div>
@@ -83,7 +87,7 @@ const Navbar = () => {
       {open && (
         <div className="md:hidden bg-white border-t border-gray-100 pb-4">
           {links.map((l) => (
-            <button key={l.to} onClick={() => { scrollTo(l.to); setOpen(false); }} className="block w-full text-left px-6 py-3 text-[#1a1464] hover:text-[#e41e2e] text-sm uppercase tracking-wider font-medium">{l.label}</button>
+            <button key={l.to} onClick={() => { go(l.to); setOpen(false); }} className="block w-full text-left px-6 py-3 text-[#1a1464] hover:text-[#e41e2e] text-sm uppercase tracking-wider font-medium">{l.label}</button>
           ))}
           {/* Mobile Policies Accordion */}
           <button onClick={() => setMobilePoliciesOpen(!mobilePoliciesOpen)} className="w-full text-left px-6 py-3 text-[#1a1464] hover:text-[#e41e2e] text-sm uppercase tracking-wider font-medium flex justify-between items-center">
@@ -97,7 +101,7 @@ const Navbar = () => {
               ))}
             </div>
           )}
-          <div className="px-6 pt-2"><button onClick={() => { scrollTo("hero"); setOpen(false); }} className="w-full bg-[#e41e2e] text-white py-2 text-sm font-bold uppercase tracking-wider rounded">Book Now</button></div>
+          <div className="px-6 pt-2"><button onClick={() => { go("/"); setOpen(false); }} className="w-full bg-[#e41e2e] text-white py-2 text-sm font-bold uppercase tracking-wider rounded">Book Now</button></div>
         </div>
       )}
     </nav>
@@ -598,8 +602,8 @@ const Footer = () => (
         <div>
           <h4 className="text-white font-semibold text-sm uppercase tracking-wider mb-4">Quick Links</h4>
           <ul className="space-y-2.5">
-            {[{l:"Home",t:"hero"},{l:"Rooms",t:"rooms"},{l:"Gallery",t:"gallery"},{l:"About",t:"about"},{l:"Contact",t:"contact"}].map(n => (
-              <li key={n.t}><button onClick={() => scrollTo(n.t)} className="text-white/50 hover:text-white text-sm transition-colors">{n.l}</button></li>
+            {Object.entries(SECTION_BY_PATH).map(([path, id]) => (
+              <li key={path}><Link to={path} onClick={() => window.location.pathname === path && scrollTo(id)} className="text-white/50 hover:text-white text-sm transition-colors capitalize">{id === "hero" ? "Home" : id}</Link></li>
             ))}
           </ul>
         </div>
@@ -876,7 +880,7 @@ const TermsConditions = () => (
 );
 
 /* ════════════ MAIN WEBSITE ════════════ */
-const Website = ({ page }) => {
+const Website = ({ page, section }) => {
   const [rooms, setRooms] = useState([]);
   const [hotelInfo, setHotelInfo] = useState(null);
   const [showBooking, setShowBooking] = useState(() => new URLSearchParams(window.location.search).has("booking"));
@@ -887,6 +891,12 @@ const Website = ({ page }) => {
     axios.get(`${API}/public/rooms`).then(r => setRooms(r.data)).catch(() => {});
     axios.get(`${API}/public/hotel-info`).then(r => setHotelInfo(r.data)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (page) { window.scrollTo(0, 0); return; }
+    const t = setTimeout(() => (section ? scrollTo(section) : window.scrollTo({ top: 0, behavior: "smooth" })), 80);
+    return () => clearTimeout(t);
+  }, [page, section]);
 
   const handleSearch = (ci, co) => {
     setBookingDates({ checkIn: ci, checkOut: co });

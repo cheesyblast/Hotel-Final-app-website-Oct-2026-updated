@@ -34,9 +34,12 @@ services:
     environment:
       - MONGO_URL=mongodb://mongo:27017
       - PUBLIC_WEBSITE_URL=${PUBLIC_WEBSITE_URL}
+      - UPLOAD_DIR=/app/uploads
       - DB_NAME=${CRM_DB_NAME:-kreation_db}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - CORS_ORIGINS=${CRM_DOMAIN:-https://app.kreationhotels.com}
+    volumes:
+      - uploads:/app/uploads
     ports:
       - "127.0.0.1:8001:8001"
 
@@ -70,6 +73,11 @@ services:
       - PAYHERE_BASE_URL=${PAYHERE_BASE_URL:-https://sandbox.payhere.lk}
       - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY}
       - CORS_ORIGINS=${WEBSITE_DOMAIN:-https://www.kreationhotels.com}
+      - PUBLIC_WEBSITE_URL=${PUBLIC_WEBSITE_URL}
+      - UPLOAD_DIR=/app/uploads
+      - WEBSITE_INDEX_URL=http://website-frontend:80/index.html
+    volumes:
+      - uploads:/app/uploads
     ports:
       - "127.0.0.1:8002:8002"
 
@@ -107,6 +115,7 @@ services:
       - website-frontend
 
 volumes:
+  uploads:
   mongo_data:
   certbot_data:
   certbot_certs:

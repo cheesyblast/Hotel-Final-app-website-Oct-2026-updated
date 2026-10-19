@@ -8,6 +8,9 @@ import Website from "./Website";
 import FeedbackPage from "./FeedbackPage";
 import GuestFeedback from "./GuestFeedback";
 import { printReceipt } from "./receipt";
+import SeoSettings from "./SeoSettings";
+import SeoHead from "./SeoHead";
+import { HelmetProvider } from "react-helmet-async";
 
 // Countries list for dropdown
 const COUNTRIES = [
@@ -12584,9 +12587,10 @@ const Settings = () => {
             { key: 'channels', label: 'Booking Channels' },
             { key: 'payments', label: 'Payments' },
             { key: 'taxes', label: 'Taxes & Levies' },
+            { key: 'seo', label: 'SEO & Search' },
             { key: 'logs', label: 'Activity Logs' },
           ].map(tab => (
-            <button key={tab.key}
+            <button key={tab.key} data-testid={`settings-tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
               className={`py-2 px-3 rounded-md font-medium text-sm transition-colors ${
                 activeTab === tab.key
@@ -14489,6 +14493,8 @@ const Settings = () => {
         </div>
       )}
 
+      {activeTab === 'seo' && <SeoSettings />}
+
       {/* Activity Logs Tab */}
       {activeTab === 'logs' && (
         <div className="space-y-6">
@@ -14958,9 +14964,15 @@ const PreviewSiteSwitch = ({ target }) => (
 );
 
 const PublicSite = ({ preview }) => (
+  <HelmetProvider>
   <BrowserRouter>
+    <SeoHead />
     <Routes>
       <Route path="/" element={<Website />} />
+      <Route path="/rooms" element={<Website section="rooms" />} />
+      <Route path="/gallery" element={<Website section="gallery" />} />
+      <Route path="/about" element={<Website section="about" />} />
+      <Route path="/contact" element={<Website section="contact" />} />
       <Route path="/refund-policy" element={<Website page="refund" />} />
       <Route path="/privacy-policy" element={<Website page="privacy" />} />
       <Route path="/terms" element={<Website page="terms" />} />
@@ -14969,6 +14981,7 @@ const PublicSite = ({ preview }) => (
     </Routes>
     {preview && <PreviewSiteSwitch target="crm" />}
   </BrowserRouter>
+  </HelmetProvider>
 );
 
 const CRMSite = ({ preview }) => (

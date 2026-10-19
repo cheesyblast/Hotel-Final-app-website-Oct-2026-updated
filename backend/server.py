@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, status, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from dotenv import load_dotenv
@@ -8309,6 +8309,21 @@ async def get_booking_receipt(booking_id: str, current_user: UserResponse = Depe
     customer = next((c for c in candidates if _date_str(c.get("check_in_date")) == bci), None) or max(candidates, key=lambda c: _date_str(c.get("check_in_date")))
     return await build_receipt(customer)
 
+# ==================== SEO SETTINGS (CRM) ====================
+import seo_routes
+
+@api_router.get("/seo/settings")
+async def get_seo_settings(current_user: UserResponse = Depends(get_current_active_admin)):
+    return await seo_routes.load_seo()
+
+@api_router.put("/seo/settings")
+async def update_seo_settings(payload: dict, current_user: UserResponse = Depends(get_current_active_admin)):
+    return await seo_routes.save_seo(payload, current_user.username)
+
+@api_router.post("/seo/upload-image")
+async def upload_seo_image(file: UploadFile = File(...), current_user: UserResponse = Depends(get_current_active_admin)):
+    return {"url": seo_routes.save_upload(await file.read(), file.filename)}
+
 # Test route
 @api_router.get("/")
 async def root():
@@ -8320,6 +8335,7 @@ app.include_router(api_router)
 # Include public website routes
 from public_routes import public_router
 app.include_router(public_router, prefix="/api")
+app.include_router(seo_routes.seo_public_router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
