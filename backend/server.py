@@ -8235,9 +8235,12 @@ async def build_receipt(customer: dict):
         nights = 1
 
     orders = []
-    async for o in db.restaurant_orders.find({"room_number": room, "order_status": {"$ne": "Cancelled"}, "payment_status": {"$ne": "Cancelled"}}, {"_id": 0}):
+    gname = name.strip().lower()
+    async for o in db.restaurant_orders.find({"room_number": {"$in": [room, f"Room {room}"]}, "order_status": {"$ne": "Cancelled"}, "payment_status": {"$ne": "Cancelled"}}, {"_id": 0}):
         od = _date_str(o.get("order_date"))
-        if ci <= od <= co:
+        cname = (o.get("customer_name") or "").strip().lower()
+        other_guest = cname and cname not in gname and gname not in cname
+        if ci <= od <= co and not other_guest:
             orders.append({
                 "order_number": o.get("order_number", ""),
                 "date": od,

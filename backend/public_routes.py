@@ -621,9 +621,9 @@ async def submit_feedback(token: str, req: FeedbackSubmission):
     fb = await db.feedback_requests.find_one({"token": token})
     if not fb:
         raise HTTPException(status_code=404, detail="This feedback link is invalid or has expired.")
-    if fb.get("status") == "submitted":
-        raise HTTPException(status_code=409, detail="Feedback has already been submitted. Thank you!")
-    await db.feedback_requests.update_one({"token": token}, {"$set": {
+    res = await db.feedback_requests.update_one({"token": token, "status": {"$ne": "submitted"}}, {"$set": {
         **req.dict(), "comment": req.comment.strip(), "status": "submitted", "submitted_at": datetime.now(timezone.utc),
     }})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=409, detail="Feedback has already been submitted. Thank you!")
     return {"message": "Thank you for your feedback!"}

@@ -1,0 +1,47 @@
+{
+  "summary": "Tested Guest Feedback (auto request on checkout/early-checkout, public /feedback/<token> page, CRM /guest-feedback), check-out receipts (API + popup A4 receipt from Dashboard after normal and early checkout, Bookings page and Guest Details history), Upcoming Bookings search and pagination, the fixed dropdown menus (no clipping, flip upward, close on outside click and scroll, menu actions), and a Settings tabs regression check. Backend: 20/20 pytest pass. Frontend: the Dashboard first CRASHED with 'ReferenceError: filteredUpcomingPage is not defined' (whole page blank with the runtime error overlay). I fixed it with a one-line change in App.js. After the fix, every requested frontend flow passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/public/feedback/{token}", "issue": "Check-then-update is not atomic: two submits at the same moment could both pass the status check (2nd one overwrites the first). Use update_one({token, status:{$ne:'submitted'}}) and check matched_count to return 409."},
+      {"endpoint": "build_receipt (GET /api/receipts/*)", "issue": "Restaurant orders are matched by room_number + date range, and advances by customer_name only. On a same-day turnover in the same room, or for two guests with the same name, the wrong guest's orders or advances can appear on a receipt. Prefer matching by customer_id / booking_id when available."},
+      {"endpoint": "GET /api/receipts/booking/{id}", "issue": "Existing data 'Test' booking (room 103) has check-in 2026-10-29 but checked out 2026-10-19 (checkout is before check-in). The receipt shows nights=1 via max(1, ...) and the order/payment date window can never match. This is an edge case from bad data; consider validating it."},
+      {"endpoint": "Email/SMS delivery", "issue": "Logs show 'Failed to send SMS/email notification' for fake test contacts, so email_sent and sms_sent were false. Expected for fake numbers and not a code bug; noted as requested."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard (Upcoming Bookings)", "issue": "FIXED BY TESTER: filteredUpcomingPage was used in the JSX but never declared, which crashed the whole Dashboard with a ReferenceError. Added `const filteredUpcomingPage = Math.min(upcomingBookingsPage, Math.max(1, Math.ceil(filteredUpcoming.length / 10)));` after the filteredUpcoming declaration (~line 1314). This also clamps the page when a search shrinks the list.", "selector": "[data-testid='upcoming-bookings-search-input']", "priority": "CRITICAL (fixed)"},
+      {"component": "FeedbackPage", "issue": "The 'Please choose an overall rating.' error stays visible after the guest picks a star. It only clears on the next submit. Clear the error in the overall StarInput onChange.", "selector": "[data-testid='feedback-error']", "priority": "LOW"},
+      {"component": "Dashboard action menus", "issue": "An open menu (fixed position) covers the next row's three-dots button. Clicking where that button is visible lands on a menu item (e.g. Edit) instead. Also, toggleDropdown never closes other open menus, and every menu shares one menuPos. Suggest making toggleDropdown/toggleCustomerDropdown exclusive (close the others when opening one).", "selector": "[data-testid^='upcoming-booking-actions-']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Guest Feedback (/guest-feedback) & Settings", "issues": ["The page container is wider than the header and nav width used on Dashboard, Guests and Bookings, so it looks misaligned with the nav.", "Feedback date filters use the browser's native date input instead of a shadcn calendar.", "The Settings > Activity Logs card is white on the dark theme (inconsistent)."]},
+      {"screen": "Dashboard Upcoming Bookings", "issues": ["The table container keeps a large empty area below the rows when there are few bookings (a min-height that was probably kept for the old dropdown room)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration_19_feedback_receipts.py", "/app/backend/tests/ui_seed_iter19.py", "/app/backend/tests/ui_seed_pag_iter19.py", "/app/backend/tests/check_receipts_all_iter19.py", "/app/test_reports/pytest/pytest_iter19.xml"],
+  "action_items": [
+    "Review and keep the tester's one-line fix for filteredUpcomingPage in App.js (Dashboard was crashing). Please self-verify the Dashboard loads.",
+    "Make feedback submit atomic (conditional update_one) to avoid a double-submit race.",
+    "Clear feedback-error when the overall rating is selected.",
+    "Make the action dropdowns exclusive (opening one closes the others).",
+    "Optional: match receipt orders and advances by customer/booking id instead of room+date / name."
+  ],
+  "critical_code_review_comments": [
+    "App.js is ~15k lines and server.py ~8.3k lines. Dashboard, Bookings and Guests should be split into modules; this crash came from an undeclared variable that a lint pass (no-undef) would have caught at compile time.",
+    "GuestFeedback.load has try/finally with no catch, so an API error gives an unhandled promise rejection and the user sees no error state.",
+    "The global click-outside handler uses closest('.relative'), so clicks inside any .relative element (search inputs, other cells) won't close the open menus.",
+    "POST /api/checkout has no auth dependency (pre-existing), unlike early-checkout.",
+    "/api/feedback only requires login and does not check the 'feedback' page permission on the backend (only PageGuard in the frontend)."
+  ],
+  "updated_files": ["/app/frontend/src/App.js", "/app/backend/tests/test_iteration_19_feedback_receipts.py", "/app/backend/tests/ui_seed_iter19.py", "/app/backend/tests/ui_seed_pag_iter19.py", "/app/backend/tests/check_receipts_all_iter19.py"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "100% of requested flows after tester's crash fix (Dashboard was 0% before fix)"},
+  "test_credentials": "admin/admin123 from /app/memory/test_credentials.md (worked)",
+  "seed_data_creation": "Temporary TEST_FB_* / TEST_UI_* rooms (T901-T903, T911-T913), bookings, customers, daily_sales, incomes, feedback_requests, 12 TEST_UI_Pag bookings and related activity_logs were created and then fully deleted. The existing token GzrUqyuOaSLQ5ElD6dDzOg was NOT submitted (still pending).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: export REACT_APP_BACKEND_URL; pytest /app/backend/tests/test_iteration_19_feedback_receipts.py (it creates and cleans its own data via pymongo). For UI: python /app/backend/tests/ui_seed_iter19.py seed|clean creates checked-in TEST_UI guests for the checkout and receipt flows. After login, the app stays on /login with a blank body until you click a nav item; navigate via the nav. Receipt popup: use context.expect_page and wait for the title to start with 'Receipt'. Early checkout needs 'Confirm Early Checkout' and then 'Confirm Collection' in the Collect Payment modal.",
+  "rca of the issue": "Dashboard crash: the upcoming-bookings search change replaced upcomingBookingsPage with filteredUpcomingPage in the slice, pagination text and disabled checks (lines ~2195-2280) but never declared it, so a ReferenceError happened on render. Repro: log in, open Dashboard, see the blank page with the runtime overlay. Mitigation: declared filteredUpcomingPage, clamped to the filtered page count. Verified the Dashboard renders, search filters correctly, and pagination works on both the full list (14 -> 2 pages) and the filtered list (12 -> 'Showing 11-12 of 12')."
+}

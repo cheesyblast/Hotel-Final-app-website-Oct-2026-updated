@@ -62,3 +62,15 @@ Full-stack hotel management system (CRM) + Public hotel website with online book
 ## 2026-06 Fork Update
 - Fixed CRM Settings: Taxes & Levies block was nested inside the Communication wrapper (rendered blank); moved out. Payroll Settings card was rendering on every Settings tab; now scoped under Taxes & Levies tab. Verified via screenshot across all 7 tabs.
 - Awaiting user verification of last batch (multi-room booking, Email/SMS settings, PayHere DB keys, settings reorg).
+
+## 2026-06 — Guest Feedback, A4 Receipt, Dashboard fixes
+- Guest Feedback: auto email+SMS request after checkout/early-checkout (`send_feedback_request`, collection `feedback_requests`, token link `${PUBLIC_WEBSITE_URL}/feedback/<token>`). Public page `FeedbackPage.js` (overall 1–5 required + cleanliness/staff/food/comfort optional + comment). Public API `/api/public/feedback/{token}` GET/POST. CRM page `/guest-feedback` (`GuestFeedback.js`, nav "Feedback", permission id `feedback`) with averages, distribution, filters. API `GET /api/feedback`.
+- A4 Check-out Receipt: `receipt.js` printReceipt(); APIs `/api/receipts/customer/{id}`, `/api/receipts/booking/{id}`; header from Hotel Settings. Replaces old Print Invoice after checkout + early checkout; "Print Receipt" in Bookings table and Guest Details booking history.
+- Dashboard: Upcoming Bookings search; action menus now position:fixed (no clipping), exclusive, close on scroll.
+- New env: PUBLIC_WEBSITE_URL (backend .env, docker-compose crm-backend, .env.example). Added lucide-react 0.460.0.
+- Tested: iteration_19 (backend 20/20, frontend all flows pass).
+
+## Backlog
+- P1 Channel Manager real-time sync (Booking.com) — currently UI placeholder (MOCKED)
+- P1 Refactor App.js (>15k lines) / server.py (>8k lines)
+- P2 Notification logs viewer; manual "resend feedback request" button; Activity Logs card dark-theme styling

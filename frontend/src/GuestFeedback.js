@@ -99,7 +99,7 @@ export default function GuestFeedback() {
   const input = "bg-gray-700 border border-gray-600 text-white text-sm rounded-md px-3 py-2 focus:outline-none focus:border-blue-500";
 
   return (
-    <div className="container mx-auto px-4 py-8" data-testid="guest-feedback-page">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" data-testid="guest-feedback-page">
       <div className="bg-gradient-to-r from-amber-700 to-orange-700 rounded-lg p-6 mb-6">
         <h1 className="text-2xl font-bold text-white mb-1">Guest Feedback</h1>
         <p className="text-amber-100 text-sm">Ratings and comments collected automatically after each check-out</p>

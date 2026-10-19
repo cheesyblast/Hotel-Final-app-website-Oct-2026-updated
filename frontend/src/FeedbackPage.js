@@ -96,7 +96,7 @@ export default function FeedbackPage() {
         <div>
           <label className="block text-sm font-semibold text-gray-800 mb-3">Overall experience <span className="text-[#e41e2e]">*</span></label>
           <div className="flex flex-wrap items-center gap-4">
-            <StarInput value={form.overall_rating} onChange={(v) => setForm({ ...form, overall_rating: v })} size={38} testId="feedback-overall" />
+            <StarInput value={form.overall_rating} onChange={(v) => { setForm({ ...form, overall_rating: v }); setError(""); }} size={38} testId="feedback-overall" />
             <span className="text-sm font-medium text-[#1a1464] min-w-[80px]">{LABELS[form.overall_rating || 0]}</span>
           </div>
         </div>

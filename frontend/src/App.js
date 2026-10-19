@@ -1289,10 +1289,8 @@ const Dashboard = () => {
 
   // Handle dropdown toggle for booking actions
   const toggleDropdown = (bookingId) => {
-    setOpenDropdowns(prev => ({
-      ...prev,
-      [bookingId]: !prev[bookingId]
-    }));
+    setOpenCustomerDropdowns({});
+    setOpenDropdowns(prev => ({ [bookingId]: !prev[bookingId] }));
   };
 
   const closeAllDropdowns = () => {
@@ -1311,6 +1309,7 @@ const Dashboard = () => {
     ? upcomingBookings.filter(b => [b.guest_name, b.room_number, b.guest_phone, b.guest_email, b.check_in_date, b.check_out_date, b.booking_channel_name]
         .some(v => String(v || '').toLowerCase().includes(upcomingQuery)))
     : upcomingBookings;
+  const filteredUpcomingPage = Math.min(upcomingBookingsPage, Math.max(1, Math.ceil(filteredUpcoming.length / 10)));
 
   // Handle booking field changes with total calculation
   const handleBookingFieldChange = (field, value) => {
@@ -1677,10 +1676,8 @@ const Dashboard = () => {
   };
 
   const toggleCustomerDropdown = (customerId) => {
-    setOpenCustomerDropdowns(prev => ({
-      ...prev,
-      [customerId]: !prev[customerId]
-    }));
+    setOpenDropdowns({});
+    setOpenCustomerDropdowns(prev => ({ [customerId]: !prev[customerId] }));
   };
 
   const handleCheckin = async (booking) => {
@@ -2173,7 +2170,7 @@ const Dashboard = () => {
             )}
           </div>
         </div>
-        <div className="bg-gray-800 rounded-lg shadow-sm border border-gray-700 overflow-x-auto" style={{minHeight: '300px'}}>
+        <div className="bg-gray-800 rounded-lg shadow-sm border border-gray-700 overflow-x-auto">
           {filteredUpcoming.length === 0 ? (
             <div className="p-6 text-center text-gray-400" data-testid="upcoming-bookings-empty">
               {upcomingSearch ? `No upcoming bookings match "${upcomingSearch}"` : 'No upcoming bookings'}
