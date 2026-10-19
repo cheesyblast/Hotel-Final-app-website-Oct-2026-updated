@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 18 (backend + frontend). Backend: 11/11 pytest pass AFTER fixing a real email-settings persistence bug I found. Multi-room hold works (num_rooms=2 -> 2 distinct room_numbers, availability down by 2, subtotal=price*nights*rooms, tax from settings.tax_rate verified at 10% -> 38000+3800=41800, payhere.amount matches), 409 'Only 2 room(s) available' when you ask for 3 and only 2 are left, 400 for num_rooms=0. A signed PayHere notify creates 1 CRM booking per room, a bad signature returns 400, and a repeat notify returns already_confirmed. Payment-settings GET/PUT work, admin only (401/403 without a token), and the website hold uses the merchant_id/hash from the DB. POST /api/admin/complete-reset returns 404. admin/admin123 login works. Brevo is_configured=true now passes, but only after my fix: email settings were NOT being saved at all on a fresh DB. Frontend: website booking modal shows the Number of Rooms selector (1-5), and the summary shows rooms '2 — 101, 102', subtotal and total. No advance option, and the tax row shows only when tax>0. CRM Settings has all 7 tabs, and the Communication sub-tabs (Email/SMS/Templates), Booking Channels sub-tabs (Booking Channels/Channel API) and Payments tab (PayHere/PayPal/WebXPay, save works) all work. No Database Reset UI. Problems found: (1) the Taxes & Levies tab is blank because of a JSX nesting bug; (2) stray ')}' text shows on the Communication and Booking Channels tabs; (3) CRM manual bookings can double-book rooms that were booked on the website; (4) website booking confirmation SMS/email never sends; (5) PayPal/WebXPay card headings are invisible (white text on white).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/email-settings", "issue": "FIXED BY TESTER. When no email_settings doc existed, the code made EmailSettings() (with an auto-generated id), so `if current_settings.id:` was always true. It then ran update_one on an id that doesn't exist, nothing was inserted, and settings never saved (the real cause of 'email settings not persisting'). Fix: is_new_settings flag, so a new doc is inserted when none exists.", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/bookings (check_room_availability_for_booking, server.py ~L1570)", "issue": "Website bookings are saved with status 'Confirmed' and string dates ('2028-04-09'). The CRM conflict query only checks status in [Upcoming, Checked-in, Checked In] and compares against datetime values, so it never matches them. Reproduced: a website booking took rooms 101+102 for 2028-04-09, and the CRM availability list correctly showed 8 rooms, but POST /api/bookings for room 101 on the same dates SUCCEEDED, a double booking.", "priority": "HIGH"},
+      {"endpoint": "public_routes.send_booking_confirmations", "issue": "Reads sms_api_key/sms_user_id/sms_sender_id/email_api_key from db.settings (hotel settings), but those keys don't exist there. They are in db.sms_settings (notify_lk_*) and db.email_settings (brevo_api_key). So confirmation SMS/email for website bookings is never sent. It also posts JSON to notify.lk without phone normalisation. It should reuse server.send_sms/send_email, or read from the right collections. It also lists only the primary room, not all room_numbers.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "PUT /api/email-settings", "issue": "is_configured depends on settings_update.provider being in the payload; if it's missing, the stored provider isn't used. The UI offers a 'gmail' provider that the backend doesn't support (is_configured stays stale and send_email returns False)."},
+      {"endpoint": "GET /api/sms-settings", "issue": "Returns twilio_auth_token and notify_lk_api_key in plaintext; GET /api/payment-settings returns payhere_merchant_secret in plaintext. They should be masked. Also, the stored SMS provider is currently 'twilio' even though notify.lk credentials are filled in, so if the user expects notify.lk SMS, the provider must be set to notify_lk (possibly why SMS 'doesn't send')."},
+      {"endpoint": "POST /api/public/booking/hold", "issue": "Ignores payment_settings.active_gateway: PayHere is always used, even when the gateway is set to 'None (disabled)' or PayPal. Tax uses only settings.tax_rate and ignores Taxes & Levies (tax_configs)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Settings > Taxes & Levies tab", "issue": "Tab shows only the Payroll Settings card. In App.js the `{activeTab === 'taxes' && ...}` block (~L13706) and the Add Tax modal (~L13827) are nested INSIDE the `activeTab === 'communication'` wrapper (which closes at ~L13921-13922), so they can never render together. The taxes block and modal need to move outside the communication wrapper.", "selector": "button:has-text('Taxes & Levies')", "priority": "HIGH"},
+      {"component": "Settings > Communication / Booking Channels", "issue": "Leftover `)}` lines at App.js ~L13190, ~L13355 and ~L14192 render as literal ')}' text on the page (seen above the Channel API card and under Email Configuration).", "selector": "body text ')}'", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings > Payments", "issues": ["The outer card is bg-white (dark: classes don't apply), but the gateway headings use text-white: the PayHere title is barely visible and the PayPal/WebXPay titles are invisible. The 'Active Payment Gateway' label has low contrast."]},
+      {"screen": "Settings (all tabs)", "issues": ["The Payroll Settings card (~L14498) shows under every settings tab (Communication, Taxes, etc.), not inside a specific tab."]},
+      {"screen": "Website policy pages", "issues": ["Booking/Cancellation policy text still mentions a '30% minimum advance payment' and 'remaining balance at check-in', which contradicts the full-payment-only flow."]},
+      {"screen": "Website booking modal", "issues": ["The Number of Rooms dropdown is hard-coded to 1-5 and not capped at available_count; the step-1 price is per room only."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration_18_multiroom_payments.py", "/app/backend/tests/test_iteration_18_payhere_notify.py", "/app/test_reports/pytest/pytest_iter18.xml"],
+  "action_items": [
+    "Move the Taxes & Levies block and Add Tax modal out of the Communication tab wrapper in App.js, and remove the stray ')}' lines (~13190, ~13355, ~14192).",
+    "Fix CRM conflict detection (check_room_availability_for_booking) to include status 'Confirmed' and handle string dates, or save website bookings in the same format/status as CRM bookings.",
+    "Fix send_booking_confirmations in public_routes.py to use the sms_settings/email_settings collections (reuse send_sms/send_email) and list all booked rooms.",
+    "Fix Payments tab heading contrast (text-white on a white card).",
+    "Mask secrets in GET sms/payment settings; respect active_gateway on the website; update policy text to match full payment.",
+    "Remove the dead handleCompleteReset/resetting code in App.js (~L11908, ~L12514)."
+  ],
+  "critical_code_review_comments": [
+    "App.js is 15k lines and server.py is 8k lines; the Settings page should be split into components. The JSX nesting bugs above come directly from this.",
+    "Settings tab buttons have no data-testid (users, communication, payments, etc.); add them for regression tests.",
+    "Multi-room booking amount is split as total/num_rooms per booking (fine); bookings share group_order_id, which is good for grouping in the CRM."
+  ],
+  "updated_files": ["/app/backend/server.py (email-settings insert fix, ~L2113-2152)", "/app/backend/tests/test_iteration_18_multiroom_payments.py", "/app/backend/tests/test_iteration_18_payhere_notify.py"],
+  "success_rate": {"backend": "100% of 11 tests after the tester fix (1 failed before: email persistence); 2 HIGH issues found by review/repro (CRM double-booking, website confirmations never sent)", "frontend": "~80%: website multi-room flow and tabs/sub-tabs pass; Taxes & Levies tab broken; stray text; contrast issue"},
+  "test_credentials": "admin/admin123 from /app/memory/test_credentials.md (works)",
+  "seed_data_creation": "Only TEST_-prefixed holds/bookings/customers/daily_sales, all cleaned up. Payment settings restored to merchant TEST123/TESTSECRET sandbox. Test email_settings doc deleted (original state: none). settings.tax_rate restored to 0.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Server date is Oct 19 2026, so use 2027+ dates. 10 Double rooms at LKR 9500. Holds last 5 min and block rooms, so use random far-future dates or delete booking_holds with guest_name /^TEST_/ via mongosh test_database. The PayHere notify test signs with the DB secret (TESTSECRET). The login input is placeholder 'Enter your username'. Settings tabs and sub-tabs are plain buttons: use get_by_role('button', name=..., exact=True).",
+  "rca of the issue": "Email not persisting: in update_email_settings, a missing DB doc was replaced by an EmailSettings() default that always has a uuid id, so the update branch always ran against an id that doesn't exist and the insert branch was unreachable. Fixed with an is_new_settings flag and verified (doc count 0 -> 1, provider=brevo, is_configured=true). Taxes tab blank: JSX block nested inside the communication tab conditional during the settings reorganisation."
+}

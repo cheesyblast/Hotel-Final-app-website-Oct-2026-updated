@@ -58,3 +58,7 @@ Full-stack hotel management system (CRM) + Public hotel website with online book
 - P2: Notification logs viewer
 - P2: Guest checkout receipt PDF
 - P3: Refactor monolithic App.js and server.py
+
+## 2026-06 Fork Update
+- Fixed CRM Settings: Taxes & Levies block was nested inside the Communication wrapper (rendered blank); moved out. Payroll Settings card was rendering on every Settings tab; now scoped under Taxes & Levies tab. Verified via screenshot across all 7 tabs.
+- Awaiting user verification of last batch (multi-room booking, Email/SMS settings, PayHere DB keys, settings reorg).

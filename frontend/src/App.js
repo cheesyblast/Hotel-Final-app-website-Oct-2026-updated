@@ -13703,6 +13703,9 @@ const Settings = () => {
         </div>
       )}
 
+      </div>
+      )}
+
       {/* Taxes & Levies Tab */}
       {activeTab === 'taxes' && (
         <div className="space-y-6">
@@ -13917,8 +13920,6 @@ const Settings = () => {
             </div>
           </div>
         </div>
-      )}
-      </div>
       )}
 
       {/* Booking Channels Tab - combined channels + API */}
@@ -14495,6 +14496,8 @@ const Settings = () => {
           </div>
         </div>
       )}
+      {activeTab === 'taxes' && (
+        <div className="mt-6">
               {/* Payroll Settings Section */}
               <div className="border border-emerald-200 dark:border-emerald-800 rounded-lg p-6 bg-emerald-50 dark:bg-emerald-900/20">
                 <div className="flex items-start space-x-4">
@@ -14521,6 +14524,8 @@ const Settings = () => {
                   </div>
                 </div>
               </div>
+        </div>
+      )}
 
       {/* Activity Logs Tab */}
       {activeTab === 'logs' && (

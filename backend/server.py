@@ -2111,6 +2111,7 @@ async def update_email_settings(
     """Update email settings (Admin only)"""
     # Get current settings or create default
     current_settings = await get_email_settings()
+    is_new_settings = current_settings is None
     if not current_settings:
         current_settings = EmailSettings()
     
@@ -2148,7 +2149,7 @@ async def update_email_settings(
     update_data['is_configured'] = is_configured
     
     # Update or create settings
-    if current_settings.id:
+    if not is_new_settings:
         await db.email_settings.update_one(
             {"id": current_settings.id},
             {"$set": update_data}
