@@ -190,8 +190,8 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
   // PayHere return check
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("booking") === "success") { setStep(4); window.history.replaceState({}, "", "/website"); }
-    else if (params.get("booking") === "cancelled") { setError("Payment cancelled."); setStep(1); window.history.replaceState({}, "", "/website"); }
+    if (params.get("booking") === "success") { setStep(4); window.history.replaceState({}, "", "/"); }
+    else if (params.get("booking") === "cancelled") { setError("Payment cancelled."); setStep(1); window.history.replaceState({}, "", "/"); }
   }, []);
 
   const holdRoom = async () => {
@@ -211,10 +211,10 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
   const initiatePayHere = () => {
     if (!holdData?.payhere) return;
     const ph = holdData.payhere;
-    const form = document.createElement("form"); form.method = "POST"; form.action = `${PAYHERE_BASE}/pay/checkout`;
+    const form = document.createElement("form"); form.method = "POST"; form.action = ph.checkout_url || `${PAYHERE_BASE}/pay/checkout`;
     const fields = {
-      merchant_id: ph.merchant_id, return_url: `${window.location.origin}/website?booking=success&order=${holdData.order_id}`,
-      cancel_url: `${window.location.origin}/website?booking=cancelled`, notify_url: `${API}/public/payhere/notify`,
+      merchant_id: ph.merchant_id, return_url: `${window.location.origin}/?booking=success&order=${holdData.order_id}`,
+      cancel_url: `${window.location.origin}/?booking=cancelled`, notify_url: `${API}/public/payhere/notify`,
       order_id: ph.order_id, items: `Room Booking - ${holdData.room_type}`, currency: ph.currency, amount: ph.amount,
       first_name: guest.name.split(" ")[0], last_name: guest.name.split(" ").slice(1).join(" ") || "",
       email: guest.email, phone: guest.phone, address: "N/A", city: "Colombo", country: guest.country, hash: ph.hash,
@@ -879,7 +879,7 @@ const TermsConditions = () => (
 const Website = ({ page }) => {
   const [rooms, setRooms] = useState([]);
   const [hotelInfo, setHotelInfo] = useState(null);
-  const [showBooking, setShowBooking] = useState(false);
+  const [showBooking, setShowBooking] = useState(() => new URLSearchParams(window.location.search).has("booking"));
   const [bookingDates, setBookingDates] = useState({ checkIn: "", checkOut: "" });
   const [searchLoading, setSearchLoading] = useState(false);
 

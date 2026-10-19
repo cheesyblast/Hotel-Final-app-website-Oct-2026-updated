@@ -14929,15 +14929,53 @@ function AppContent() {
   );
 }
 
-// Main App Component with Authentication
-function App() {
-  const hostname = window.location.hostname;
-  const isCRM = hostname.startsWith("app.");
+// Preview/dev hosts default to CRM; ?site=website|crm switches (persisted) for testing
+const PREVIEW_HOST_RE = /(\.preview\.emergentagent\.com|\.emergentagent\.com|\.emergent\.host)$|^(localhost|127\.0\.0\.1)$/;
 
-  if (isCRM) {
-    // CRM domain: all routes are the admin portal
-    return (
-      <BrowserRouter>
+const resolveSiteMode = () => {
+  const host = window.location.hostname;
+  if (host.startsWith("app.")) return { mode: "crm", preview: false };
+  if (!PREVIEW_HOST_RE.test(host)) return { mode: "website", preview: false };
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("site");
+  if (requested === "website" || requested === "crm") {
+    localStorage.setItem("preview_site_mode", requested);
+    params.delete("site");
+    const qs = params.toString();
+    window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+  }
+  return { mode: localStorage.getItem("preview_site_mode") === "website" ? "website" : "crm", preview: true };
+};
+
+const PreviewSiteSwitch = ({ target }) => (
+  <a
+    href={`/?site=${target}`}
+    className="fixed bottom-4 left-4 z-[9999] rounded-full bg-black/80 px-4 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-black transition-colors"
+    data-testid="preview-site-switch"
+  >
+    Preview: switch to {target === "crm" ? "CRM" : "Website"}
+  </a>
+);
+
+const PublicSite = ({ preview }) => (
+  <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Website />} />
+      <Route path="/refund-policy" element={<Website page="refund" />} />
+      <Route path="/privacy-policy" element={<Website page="privacy" />} />
+      <Route path="/terms" element={<Website page="terms" />} />
+      <Route path="/feedback/:token" element={<FeedbackPage />} />
+      <Route path="*" element={<Navigate replace to="/" />} />
+    </Routes>
+    {preview && <PreviewSiteSwitch target="crm" />}
+  </BrowserRouter>
+);
+
+const CRMSite = ({ preview }) => (
+  <BrowserRouter>
+    <Routes>
+      {preview && <Route path="/feedback/:token" element={<FeedbackPage />} />}
+      <Route path="*" element={
         <FinancialProvider>
           <AuthProvider>
             <ProtectedRoute>
@@ -14945,33 +14983,15 @@ function App() {
             </ProtectedRoute>
           </AuthProvider>
         </FinancialProvider>
-      </BrowserRouter>
-    );
-  }
+      } />
+    </Routes>
+    {preview && <PreviewSiteSwitch target="website" />}
+  </BrowserRouter>
+);
 
-  // Public domain: hotel website + CRM accessible at sub-routes
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Website />} />
-        <Route path="/website" element={<Navigate to="/" replace />} />
-        <Route path="/refund-policy" element={<Website page="refund" />} />
-        <Route path="/privacy-policy" element={<Website page="privacy" />} />
-        <Route path="/terms" element={<Website page="terms" />} />
-        <Route path="/feedback/:token" element={<FeedbackPage />} />
-        {/* CRM routes (auth-protected) — needed for preview/testing */}
-        <Route path="/*" element={
-          <FinancialProvider>
-            <AuthProvider>
-              <ProtectedRoute>
-                <AppContent />
-              </ProtectedRoute>
-            </AuthProvider>
-          </FinancialProvider>
-        } />
-      </Routes>
-    </BrowserRouter>
-  );
+function App() {
+  const { mode, preview } = resolveSiteMode();
+  return mode === "crm" ? <CRMSite preview={preview} /> : <PublicSite preview={preview} />;
 }
 
 export default App;

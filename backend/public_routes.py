@@ -295,7 +295,15 @@ async def hold_room(req: BookingHoldRequest):
     pay_settings = await db.payment_settings.find_one({}, {"_id": 0})
     merchant_id = (pay_settings or {}).get("payhere_merchant_id") or os.environ.get("PAYHERE_MERCHANT_ID", "")
     merchant_secret = (pay_settings or {}).get("payhere_merchant_secret") or os.environ.get("PAYHERE_MERCHANT_SECRET", "")
-    payhere_mode = (pay_settings or {}).get("payhere_mode", "sandbox")
+    payhere_mode = ((pay_settings or {}).get("payhere_mode") or "").strip().lower()
+    if payhere_mode in ("live", "production"):
+        checkout_url = "https://www.payhere.lk/pay/checkout"
+    elif payhere_mode in ("sandbox", "testing", "test"):
+        checkout_url = "https://sandbox.payhere.lk/pay/checkout"
+    else:
+        env_base = os.environ.get("PAYHERE_BASE_URL", "").rstrip("/")
+        checkout_url = f"{env_base}/pay/checkout" if env_base else None
+        payhere_mode = "live" if "www.payhere.lk" in env_base else "sandbox"
     currency = "LKR"
 
     pay_hash = ""
@@ -324,7 +332,8 @@ async def hold_room(req: BookingHoldRequest):
             "amount": f"{payment_amount:.2f}",
             "currency": currency,
             "hash": pay_hash,
-            "sandbox": payhere_mode == "sandbox",
+            "sandbox": "sandbox.payhere.lk" in (checkout_url or ""),
+            "checkout_url": checkout_url,
         }
     }
 

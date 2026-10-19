@@ -74,3 +74,8 @@ Full-stack hotel management system (CRM) + Public hotel website with online book
 - P1 Channel Manager real-time sync (Booking.com) — currently UI placeholder (MOCKED)
 - P1 Refactor App.js (>15k lines) / server.py (>8k lines)
 - P2 Notification logs viewer; manual "resend feedback request" button; Activity Logs card dark-theme styling
+
+## 2026-06 — Domain isolation + dynamic PayHere URL
+- App.js: `resolveSiteMode()` → `app.*` = CRM only; real domains (kreationhotels.com/www) = PublicSite only (/, /refund-policy, /privacy-policy, /terms, /feedback/:token, `*` → `<Navigate replace to="/"/>`; never CRM/setup). Preview hosts (*.preview.emergentagent.com, *.emergentagent.com, *.emergent.host, localhost) default CRM; `?site=website` / `?site=crm` switches (localStorage `preview_site_mode`), floating "Preview: switch to …" pill.
+- PayHere: `/api/public/booking/hold` returns `payhere.checkout_url` from DB payhere_mode (live/production → https://www.payhere.lk/pay/checkout, sandbox/testing → https://sandbox.payhere.lk/pay/checkout; unset → env PAYHERE_BASE_URL); Website.js falls back to REACT_APP_PAYHERE_BASE_URL only if checkout_url missing.
+- Fixed PayHere return/cancel URLs (were /website?booking=… which lost the query on redirect) → now /?booking=…, booking modal auto-opens on return.
