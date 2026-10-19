@@ -131,6 +131,8 @@ Each client gets their own:
 | `PAYHERE_BASE_URL` | Website | `https://www.payhere.lk` for live |
 | `TURNSTILE_SECRET_KEY` | Website | Cloudflare Turnstile secret |
 | `PUBLIC_WEBSITE_URL` | CRM | Public website base URL used in guest feedback links (e.g. https://kreationhotels.com) |
+| `UPLOAD_DIR` | CRM + Website | Shared folder (docker volume `uploads`) for SEO share images |
+| `WEBSITE_INDEX_URL` | Website | Built index.html used for server-side SEO tag injection (http://website-frontend:80/index.html) |
 | `REACT_APP_BACKEND_URL` | Both FE | Backend API URL |
 | `REACT_APP_TURNSTILE_SITE_KEY` | Website FE | Turnstile site key |
 | `CRM_API_URL` | Website BE | CRM backend URL (for shared DB) |
@@ -193,3 +195,9 @@ docker cp kreation-mongo-1:/backup ./backups/
 | MongoDB connection refused | Check `mongo` container is running, check `MONGO_URL` |
 | SSL not working | Run certbot again, check ports 80/443 are open |
 | PayHere not calling back | Ensure `notify_url` is publicly accessible HTTPS |
+
+## SEO Engine (sitemap, robots, social previews)
+- Configure everything in CRM → Settings → **SEO & Search**. Set **Canonical Domain URL** to `https://www.kreationhotels.com`.
+- nginx (`nginx/website.conf`) sends page requests to the website backend, which injects title / meta / Open Graph / Twitter / JSON-LD into `index.html` so Facebook, WhatsApp and LinkedIn previews work. Static assets still come from `website-frontend`; if the backend is down nginx falls back to the plain SPA.
+- `https://www.kreationhotels.com/sitemap.xml` and `/robots.txt` are generated live from the CRM settings. Submit the sitemap in Google Search Console.
+- Uploaded share images are stored in the `uploads` docker volume (shared by crm-backend and website-backend) and served at `/api/public/seo/media/...`.

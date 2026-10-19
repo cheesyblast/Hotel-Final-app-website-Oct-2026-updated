@@ -64,8 +64,22 @@ async def load_seo() -> dict:
     return seo
 
 
+def _validate(clean: dict):
+    for k, v in clean.items():
+        d = DEFAULT_SEO[k]
+        ok = (isinstance(v, bool) if isinstance(d, bool) else isinstance(v, list) and all(isinstance(x, str) for x in v) if isinstance(d, list)
+              else isinstance(v, dict) if isinstance(d, dict) else isinstance(v, str))
+        if not ok:
+            raise HTTPException(status_code=422, detail=f"Invalid value for '{k}'")
+    if "pages" in clean and not all(isinstance(v, dict) for v in clean["pages"].values()):
+        raise HTTPException(status_code=422, detail="Invalid value for 'pages'")
+    if "schema" in clean and not isinstance(clean["schema"].get("amenities", []), list):
+        raise HTTPException(status_code=422, detail="Invalid value for 'schema.amenities'")
+
+
 async def save_seo(data: dict, username: str) -> dict:
     clean = {k: data[k] for k in DEFAULT_SEO if k in data}
+    _validate(clean)
     if "canonical_url" in clean:
         clean["canonical_url"] = (clean["canonical_url"] or "").strip().rstrip("/")
     if "meta_keywords" in clean:
@@ -84,6 +98,9 @@ def save_upload(content: bytes, filename: str) -> str:
     ext = Path(filename or "").suffix.lower()
     if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
         raise HTTPException(status_code=400, detail="Only JPG, PNG, WEBP or GIF images are allowed")
+    magic = {".png": [b"\x89PNG"], ".jpg": [b"\xff\xd8\xff"], ".jpeg": [b"\xff\xd8\xff"], ".gif": [b"GIF8"], ".webp": [b"RIFF"]}
+    if not any(content.startswith(m) for m in magic[ext]) or (ext == ".webp" and content[8:12] != b"WEBP"):
+        raise HTTPException(status_code=400, detail="File content is not a valid image")
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image must be 5 MB or smaller")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -161,11 +178,11 @@ async def resolve_meta(path: str, request: Request = None) -> dict:
             "image": og_image,
             "site": seo.get("twitter_site") or "",
         },
-        "jsonld": build_jsonld(seo, hotel, hotel_name, base, og_image),
+        "jsonld": build_jsonld(seo, hotel, hotel_name, base, og_image, fmt),
     }
 
 
-def build_jsonld(seo: dict, hotel: dict, hotel_name: str, base: str, image: str) -> dict:
+def build_jsonld(seo: dict, hotel: dict, hotel_name: str, base: str, image: str, fmt=lambda s: s) -> dict:
     sc = seo["schema"]
     data = {
         "@context": "https://schema.org",
@@ -173,7 +190,7 @@ def build_jsonld(seo: dict, hotel: dict, hotel_name: str, base: str, image: str)
         "name": hotel_name,
         "url": base or None,
         "legalName": sc.get("legal_name") or None,
-        "description": sc.get("description") or seo.get("meta_description") or None,
+        "description": fmt(sc.get("description") or seo.get("meta_description")) or None,
         "image": image or None,
         "telephone": sc.get("telephone") or hotel.get("hotel_phone") or None,
         "email": sc.get("email") or hotel.get("hotel_email") or None,

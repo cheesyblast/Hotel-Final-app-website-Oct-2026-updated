@@ -896,7 +896,7 @@ const Website = ({ page, section }) => {
     if (page) { window.scrollTo(0, 0); return; }
     const t = setTimeout(() => (section ? scrollTo(section) : window.scrollTo({ top: 0, behavior: "smooth" })), 80);
     return () => clearTimeout(t);
-  }, [page, section]);
+  }, [page, section, rooms.length]);
 
   const handleSearch = (ci, co) => {
     setBookingDates({ checkIn: ci, checkOut: co });

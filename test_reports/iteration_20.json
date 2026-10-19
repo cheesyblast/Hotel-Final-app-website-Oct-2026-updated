@@ -1,0 +1,40 @@
+{
+  "summary": "Tested the Hotel SEO & Structured Data Engine end to end. Backend: 16/16 pytest pass (1 skipped: staff1 login unavailable), covering admin auth on settings/upload, PUT persist + canonical/keyword normalisation, meta resolution (override/home format/inner default/unknown path), JSON-LD, sitemap, robots (index + noindex), SSR render, image upload (png ok, txt/oversize rejected 400), public media fetch, traversal 404. CRM 'SEO & Search' tab: all 4 sections, char counter (Optimal at 155, 'A bit short' at 100), keyword chips via Enter and comma, toggles, OG image upload + preview, schema fields, amenities, page overrides, save status, persistence after reload, other settings tabs clickable, no page errors. Public site (?site=website): /rooms,/gallery,/about,/contact load home and scroll to section; nav links change URL; title/description/canonical/og/twitter/robots/keywords update per route; one meta description, one JSON-LD (#seo-jsonld); /terms,/privacy-policy,/refund-policy render; unknown route goes to /. Feedback page renders (invalid token state); preview defaults to CRM. Found and fixed 2 bugs: a duplicate <title> in the SPA, and wrong location precedence in the nginx deployment config.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PUT /api/seo/settings", "issue": "No Pydantic validation. {\"schema\":\"bad\"} or {\"pages\":{\"/rooms\":\"x\"}} returns 500 (AttributeError on .get). {\"meta_keywords\":\"abc\"} is saved as ['a','b','c']. Fix: add a Pydantic model or type checks and return 422/400."},
+      {"endpoint": "seo_routes.build_jsonld", "issue": "The JSON-LD description falls back to the raw meta_description without fmt(), so {Hotel Name}/{City} placeholders are not replaced there (resolve_meta does replace them)."},
+      {"endpoint": "POST /api/seo/upload-image", "issue": "The file type is checked by extension only, not by content/magic bytes. Low risk because FileResponse sets the content-type from the extension."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SeoHead / index.html", "issue": "FIXED: head had 2 <title> elements (Helmet title + static 'Hotel Management App' from public/index.html). The SSR-injected <title> has no data-seo-ssr marker, so production would also have had a duplicate. Added 'head > title' to the one-time cleanup selector in SeoHead.js; verified only 1 title now.", "selector": "head > title", "priority": "MEDIUM"},
+      {"component": "Website section scroll on direct load", "issue": "Flaky: in 1 of 2 runs, direct loads of /gallery, /about and /contact stopped 411px short of the section. The scroll fires 80ms after mount, before the async rooms data finishes rendering and shifts the layout. A second run landed correctly. Suggest re-scrolling after the rooms/gallery data has loaded.", "selector": "#gallery,#about,#contact", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CRM SEO tab", "issues": ["The Google preview title ignores the Home page override (pages['/'].title), but the backend uses it, so the preview can differ from the live title.", "The preview uses String.replace, which replaces only the first placeholder occurrence; the backend replaces all.", "The page-override 'Open' links are relative when canonical_url is empty, so in the CRM they open CRM routes.", "The page-override char counters have no data-testid."]}
+    ]
+  },
+  "critical_code_review_comments": [
+    "FIXED deployment/nginx/website.conf: the regex location '~* \\.(png|jpe?g|...|json|txt)$' took precedence over the plain prefix 'location /api/'. /api/public/seo/media/<hex>.png (the og:image) would have been proxied to website-frontend and returned 404/SPA in production. Changed it to 'location ^~ /api/'.",
+    "head_tags_html's <title> lacks data-seo-ssr. It is handled by the new 'head > title' cleanup, but adding the marker would be cleaner.",
+    "Deployment wiring looks correct: a shared 'uploads' volume for both backends, WEBSITE_INDEX_URL pointing at the website-frontend, the root router registered last, and the SPA fallback on 5xx."
+  ],
+  "test_report_links": ["/app/backend/tests/test_iteration_20_seo.py", "/app/test_reports/pytest/pytest_iter20_seo.xml"],
+  "action_items": [
+    "Add input validation to PUT /api/seo/settings (500 on non-dict schema/pages)",
+    "Apply fmt() to the JSON-LD description fallback",
+    "Optional: re-run the section scroll after async room/gallery data loads",
+    "Replace the test OG image (a 1x1 green PNG uploaded during testing) with a real 1200x630 share image, and replace the street 'TEST 12 Galle Road' with the real address"
+  ],
+  "updated_files": ["/app/frontend/src/SeoHead.js", "/app/deployment/nginx/website.conf", "/app/backend/tests/test_iteration_20_seo.py"],
+  "success_rate": {"backend": "100% of feature tests (3 minor validation issues)", "frontend": "~95%"},
+  "seed_data_creation": "SEO settings are left with sensible values: site_title 'Kreation Hotels', canonical = preview URL, robots index/follow, 2 keywords, OG title/description, schema city Colombo, lat/long, 4 stars, check-in 14:00 / check-out 11:00, amenities Free Wi-Fi and Restaurant, Rooms page override. Test-labelled values to replace: street 'TEST 12 Galle Road' and a 1x1 test PNG as og_image. Several test PNGs were uploaded to backend/uploads.",
+  "test_credentials": "admin/admin123 works. staff1/staff123 login failed, so the staff-403 test was skipped.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run REACT_APP_BACKEND_URL=... pytest /app/backend/tests/test_iteration_20_seo.py. Its module fixture snapshots the SEO settings at start and restores them at teardown (forcing robots_index true). Use ?site=website to view the public site and ?site=crm to switch back (localStorage was reset to CRM at the end). In preview, sitemap/robots live at /api/public/seo/*."
+}

@@ -117,7 +117,8 @@ const ImageUpload = ({ value, onChange }) => {
 };
 
 const GlobalMeta = ({ seo, set, hotelName, city }) => {
-  const titlePreview = (seo.title_format || "").replace("{Hotel Name}", seo.schema.name || seo.site_title || hotelName).replace("{City}", seo.schema.city || city).replace("{Page}", "Home");
+  const fill = (t) => (t || "").replaceAll("{Hotel Name}", seo.schema.name || seo.site_title || hotelName).replaceAll("{City}", seo.schema.city || city).replaceAll("{Page}", "Home");
+  const titlePreview = fill(seo.pages["/"]?.title || seo.title_format);
   return (
     <Section icon={Globe} title="Global Meta Settings" subtitle="Default title, description and indexing rules for search engines" testId="seo-section-global">
       <div className="grid md:grid-cols-2 gap-4">
@@ -148,7 +149,7 @@ const GlobalMeta = ({ seo, set, hotelName, city }) => {
       </div>
       <div>
         <span className="block text-xs uppercase tracking-wider text-gray-500 mb-2">Google preview (Home)</span>
-        <SearchPreview title={titlePreview} url={seo.canonical_url} description={seo.pages["/"]?.description || seo.meta_description} />
+        <SearchPreview title={titlePreview} url={seo.canonical_url} description={fill(seo.pages["/"]?.description || seo.meta_description)} />
       </div>
     </Section>
   );
@@ -241,11 +242,11 @@ const PageOverrides = ({ seo, setPage, base }) => (
       <div key={path} className="rounded-md border border-gray-700 p-4 space-y-3" data-testid={`seo-page-${label.toLowerCase().replace(/\W+/g, "-")}`}>
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-white">{label} <span className="text-gray-500 font-normal">{path}</span></span>
-          <a href={`${base}${path}`} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300 inline-flex items-center gap-1">Open <ExternalLink className="w-3 h-3" /></a>
+          {base && <a href={`${base}${path}`} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300 inline-flex items-center gap-1">Open <ExternalLink className="w-3 h-3" /></a>}
         </div>
         <input className={inputCls} value={seo.pages[path]?.title || ""} onChange={(e) => setPage(path, { title: e.target.value })} placeholder="Custom meta title" data-testid={`seo-page-title-${path === "/" ? "home" : path.slice(1)}`} />
         <textarea rows={2} className={inputCls} value={seo.pages[path]?.description || ""} onChange={(e) => setPage(path, { description: e.target.value })} placeholder="Custom meta description" data-testid={`seo-page-description-${path === "/" ? "home" : path.slice(1)}`} />
-        <CharCounter value={seo.pages[path]?.description} />
+        <CharCounter value={seo.pages[path]?.description} testId={`seo-page-counter-${path === "/" ? "home" : path.slice(1)}`} />
       </div>
     ))}
   </Section>

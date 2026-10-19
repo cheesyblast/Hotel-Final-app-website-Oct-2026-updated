@@ -30,7 +30,7 @@ export default function SeoHead() {
         if (!alive) return;
         if (!cleaned) {
           // Drop server-injected / static head tags once so Helmet's tags are the only copy
-          document.querySelectorAll('[data-seo-ssr], head > meta[name="description"]').forEach((el) => el.remove());
+          document.querySelectorAll('[data-seo-ssr], head > meta[name="description"], head > title').forEach((el) => el.remove());
           cleaned = true;
         }
         setJsonLd(r.data.jsonld);
