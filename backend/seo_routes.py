@@ -17,17 +17,47 @@ from public_routes import db
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR") or Path(__file__).parent / "uploads")
 MEDIA_PREFIX = "/api/public/seo/media/"
 
-PAGES = {
-    "/": {"name": "Home", "changefreq": "weekly", "priority": "1.0"},
-    "/rooms": {"name": "Rooms & Suites", "changefreq": "weekly", "priority": "0.9"},
-    "/gallery": {"name": "Gallery", "changefreq": "monthly", "priority": "0.7"},
-    "/about": {"name": "About Us", "changefreq": "monthly", "priority": "0.7"},
-    "/contact": {"name": "Contact", "changefreq": "monthly", "priority": "0.8"},
-    "/terms": {"name": "Terms & Conditions", "changefreq": "yearly", "priority": "0.3"},
-    "/privacy-policy": {"name": "Privacy Policy", "changefreq": "yearly", "priority": "0.3"},
-    "/refund-policy": {"name": "Refund Policy", "changefreq": "yearly", "priority": "0.3"},
-}
-OVERRIDABLE_PAGES = ["/", "/rooms", "/gallery", "/about", "/contact", "/terms"]
+BUILTIN_PAGES = [
+    {"path": "/", "label": "Home", "changefreq": "weekly", "priority": "1.0"},
+    {"path": "/rooms", "label": "Rooms & Suites", "changefreq": "weekly", "priority": "0.9"},
+    {"path": "/gallery", "label": "Gallery", "changefreq": "monthly", "priority": "0.7"},
+    {"path": "/about", "label": "About Us", "changefreq": "monthly", "priority": "0.7"},
+    {"path": "/contact", "label": "Contact", "changefreq": "monthly", "priority": "0.8"},
+    {"path": "/terms", "label": "Terms & Conditions", "changefreq": "yearly", "priority": "0.3"},
+    {"path": "/privacy-policy", "label": "Privacy Policy", "changefreq": "yearly", "priority": "0.3"},
+    {"path": "/refund-policy", "label": "Refund Policy", "changefreq": "yearly", "priority": "0.3"},
+]
+_BUILTIN_BY_PATH = {p["path"]: p for p in BUILTIN_PAGES}
+PATH_RE = re.compile(r"^/[a-z0-9]+(?:[-/][a-z0-9]+)*$")
+RESERVED_PREFIXES = ("/api", "/feedback", "/static", "/sitemap.xml", "/robots.txt")
+ID_PATTERNS = {"ga4_id": r"G-[A-Z0-9]{4,20}", "gtm_id": r"GTM-[A-Z0-9]{4,12}", "pixel_id": r"\d{8,20}"}
+
+
+def _page(path, label="", title="", description=""):
+    b = _BUILTIN_BY_PATH.get(path, {})
+    return {"path": path, "label": label or b.get("label") or path.strip("/").replace("-", " ").title(),
+            "title": title, "description": description,
+            "changefreq": b.get("changefreq", "monthly"), "priority": b.get("priority", "0.6")}
+
+
+def _normalize_pages(raw) -> list:
+    """Accepts the legacy {path: {title, description}} dict or the list form; Home is always first."""
+    if isinstance(raw, dict):
+        items = [{"path": p, **(v or {})} for p, v in raw.items()]
+        known = {i["path"] for i in items}
+        items += [{"path": b["path"]} for b in BUILTIN_PAGES if b["path"] not in known]
+    else:
+        items = list(raw or [])
+    out, seen = [], set()
+    for it in items:
+        path = it.get("path")
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append(_page(path, it.get("label", ""), it.get("title", ""), it.get("description", "")))
+    home = next((x for x in out if x["path"] == "/"), _page("/"))
+    return [home] + [x for x in out if x["path"] != "/"]
+
 
 DEFAULT_SEO = {
     "site_title": "",
@@ -50,7 +80,12 @@ DEFAULT_SEO = {
         "price_range": "", "telephone": "", "email": "",
         "amenities": [],
     },
-    "pages": {p: {"title": "", "description": ""} for p in OVERRIDABLE_PAGES},
+    "pages": [_page(b["path"]) for b in BUILTIN_PAGES],
+    "ga4_id": "",
+    "gtm_id": "",
+    "pixel_id": "",
+    "head_code": "",
+    "body_code": "",
 }
 
 
@@ -59,7 +94,7 @@ async def load_seo() -> dict:
     doc = await db.seo_settings.find_one({}, {"_id": 0}) or {}
     seo = {**DEFAULT_SEO, **{k: v for k, v in doc.items() if k in DEFAULT_SEO}}
     seo["schema"] = {**DEFAULT_SEO["schema"], **(doc.get("schema") or {})}
-    seo["pages"] = {p: {**DEFAULT_SEO["pages"][p], **((doc.get("pages") or {}).get(p) or {})} for p in OVERRIDABLE_PAGES}
+    seo["pages"] = _normalize_pages(doc["pages"]) if "pages" in doc else _normalize_pages(DEFAULT_SEO["pages"])
     seo["updated_at"] = doc.get("updated_at")
     return seo
 
@@ -67,12 +102,24 @@ async def load_seo() -> dict:
 def _validate(clean: dict):
     for k, v in clean.items():
         d = DEFAULT_SEO[k]
-        ok = (isinstance(v, bool) if isinstance(d, bool) else isinstance(v, list) and all(isinstance(x, str) for x in v) if isinstance(d, list)
+        ok = (isinstance(v, bool) if isinstance(d, bool) else isinstance(v, list) if k == "pages" else isinstance(v, list) and all(isinstance(x, str) for x in v) if isinstance(d, list)
               else isinstance(v, dict) if isinstance(d, dict) else isinstance(v, str))
         if not ok:
             raise HTTPException(status_code=422, detail=f"Invalid value for '{k}'")
-    if "pages" in clean and not all(isinstance(v, dict) for v in clean["pages"].values()):
-        raise HTTPException(status_code=422, detail="Invalid value for 'pages'")
+    if "pages" in clean:
+        seen = set()
+        for pg in clean["pages"]:
+            if not isinstance(pg, dict) or not all(isinstance(pg.get(k, ""), str) for k in ("path", "label", "title", "description")):
+                raise HTTPException(status_code=422, detail="Invalid page entry")
+            path = (pg.get("path") or "").strip().lower()
+            if path != "/" and (not PATH_RE.match(path) or path.startswith(RESERVED_PREFIXES)):
+                raise HTTPException(status_code=422, detail=f"Invalid URL path '{pg.get('path')}'. Use lowercase letters, numbers and dashes, e.g. /spa-wellness")
+            if path in seen:
+                raise HTTPException(status_code=422, detail=f"Duplicate URL path '{path}'")
+            seen.add(path)
+    for key, pat in ID_PATTERNS.items():
+        if clean.get(key) and not re.fullmatch(pat, clean[key].strip()):
+            raise HTTPException(status_code=422, detail=f"Invalid format for {key.replace('_', ' ').upper()}")
     if "schema" in clean and not isinstance(clean["schema"].get("amenities", []), list):
         raise HTTPException(status_code=422, detail="Invalid value for 'schema.amenities'")
 
@@ -87,7 +134,11 @@ async def save_seo(data: dict, username: str) -> dict:
     if "schema" in clean:
         clean["schema"] = {k: clean["schema"].get(k, v) for k, v in DEFAULT_SEO["schema"].items()}
     if "pages" in clean:
-        clean["pages"] = {p: {"title": (clean["pages"].get(p) or {}).get("title", ""), "description": (clean["pages"].get(p) or {}).get("description", "")} for p in OVERRIDABLE_PAGES}
+        clean["pages"] = [{k: (pg.get(k) or "").strip() for k in ("label", "title", "description")} | {"path": pg["path"].strip().lower()} for pg in clean["pages"]]
+        clean["pages"] = [{k: v for k, v in pg.items() if k in ("path", "label", "title", "description")} for pg in _normalize_pages(clean["pages"])]
+    for key in ID_PATTERNS:
+        if key in clean:
+            clean[key] = clean[key].strip()
     clean["updated_at"] = datetime.now(timezone.utc).isoformat()
     clean["updated_by"] = username
     await db.seo_settings.update_one({}, {"$set": clean}, upsert=True)
@@ -109,17 +160,25 @@ def save_upload(content: bytes, filename: str) -> str:
     return f"{MEDIA_PREFIX}{name}"
 
 
-def _canonical_base(seo: dict, request: Request = None) -> str:
-    if seo.get("canonical_url"):
-        return seo["canonical_url"].rstrip("/")
-    env = os.environ.get("PUBLIC_WEBSITE_URL", "").rstrip("/")
-    if env:
-        return env
-    if request is not None:
-        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-        host = request.headers.get("x-forwarded-host", request.headers.get("host", ""))
-        return f"{proto}://{host}"
-    return ""
+def _request_origin(request: Request = None, origin: str = None) -> str:
+    if origin and re.fullmatch(r"https?://[A-Za-z0-9.-]+(:\d+)?", origin):
+        return origin.rstrip("/")
+    if request is None:
+        return os.environ.get("PUBLIC_WEBSITE_URL", "").rstrip("/")
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    if not host.startswith(("localhost", "127.0.0.1")):
+        proto = "https"
+    return f"{proto}://{host}"
+
+
+def _canonical_base(seo: dict, request: Request = None, origin: str = None) -> str:
+    """Saved canonical URL, unless empty or a preview (emergentagent.com) URL leaking onto a live domain."""
+    saved = (seo.get("canonical_url") or "").rstrip("/")
+    detected = _request_origin(request, origin)
+    if saved and not ("emergentagent.com" in saved and "emergentagent.com" not in detected):
+        return saved
+    return detected or saved
 
 
 def _abs(url: str, base: str) -> str:
@@ -128,21 +187,22 @@ def _abs(url: str, base: str) -> str:
     return url if url.startswith(("http://", "https://")) else f"{base}{url if url.startswith('/') else '/' + url}"
 
 
-async def resolve_meta(path: str, request: Request = None) -> dict:
+async def resolve_meta(path: str, request: Request = None, origin: str = None) -> dict:
     """Fully-resolved head tags for a public page path."""
-    path = path if path in PAGES else "/"
     seo = await load_seo()
+    pages = {p["path"]: p for p in seo["pages"]}
+    path = path if path in pages else "/"
     hotel = await db.settings.find_one({}, {"_id": 0}) or {}
     sc = seo["schema"]
     hotel_name = sc.get("name") or seo.get("site_title") or hotel.get("hotel_name") or "Kreation Hotels"
     city = sc.get("city") or "Colombo"
-    page_name = PAGES[path]["name"]
-    base = _canonical_base(seo, request)
+    page_name = pages[path]["label"]
+    base = _canonical_base(seo, request, origin)
 
     def fmt(s):
         return (s or "").replace("{Hotel Name}", hotel_name).replace("{City}", city).replace("{Page}", page_name)
 
-    override = seo["pages"].get(path, {}) if path in OVERRIDABLE_PAGES else {}
+    override = pages[path]
     site_title = fmt(seo.get("title_format")) if seo.get("title_format") else (seo.get("site_title") or hotel_name)
     if override.get("title"):
         title = fmt(override["title"])
@@ -246,10 +306,42 @@ _HEAD_STRIP = [
 ]
 
 
-def inject_head(template: str, meta: dict) -> str:
+def tracking_head_html(t: dict) -> str:
+    parts = ['<meta name="seo-tracking" data-seo-tracking content="server" />']
+    if t.get("gtm_id"):
+        parts.append(f"<script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);}})(window,document,'script','dataLayer','{t['gtm_id']}');</script>")
+    if t.get("ga4_id"):
+        parts.append(f'<script async src="https://www.googletagmanager.com/gtag/js?id={t["ga4_id"]}"></script>')
+        parts.append(f"<script>window.dataLayer=window.dataLayer||[];function gtag(){{dataLayer.push(arguments);}}gtag('js',new Date());gtag('config','{t['ga4_id']}');</script>")
+    if t.get("pixel_id"):
+        parts.append("<script>!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');"
+                     f"fbq('init','{t['pixel_id']}');fbq('track','PageView');</script>")
+    if t.get("head_code"):
+        parts.append(t["head_code"])
+    return "\n".join(parts)
+
+
+def tracking_body_html(t: dict) -> str:
+    parts = []
+    if t.get("gtm_id"):
+        parts.append(f'<noscript><iframe src="https://www.googletagmanager.com/ns.html?id={t["gtm_id"]}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>')
+    if t.get("body_code"):
+        parts.append(t["body_code"])
+    return "\n".join(parts)
+
+
+def tracking_config(seo: dict) -> dict:
+    return {k: seo.get(k, "") for k in ("ga4_id", "gtm_id", "pixel_id", "head_code", "body_code")}
+
+
+def inject_head(template: str, meta: dict, tracking: dict = None) -> str:
     for rx in _HEAD_STRIP:
         template = rx.sub("", template)
-    return template.replace("</head>", f"    {head_tags_html(meta)}\n  </head>", 1)
+    head = head_tags_html(meta)
+    if tracking:
+        head += "\n" + tracking_head_html(tracking)
+        template = template.replace("</body>", f"{tracking_body_html(tracking)}\n</body>", 1)
+    return template.replace("</head>", f"    {head}\n  </head>", 1)
 
 
 _template_cache = {"html": None, "at": 0.0}
@@ -271,12 +363,13 @@ async def get_index_template() -> str:
 
 async def build_sitemap(request: Request = None) -> str:
     seo = await load_seo()
+    seo_pages = seo["pages"]
     base = _canonical_base(seo, request)
     lastmod = (seo.get("updated_at") or datetime.now(timezone.utc).isoformat())[:10]
     urls = "".join(
         f"  <url>\n    <loc>{htmlmod.escape(base + p)}</loc>\n    <lastmod>{lastmod}</lastmod>\n"
         f"    <changefreq>{c['changefreq']}</changefreq>\n    <priority>{c['priority']}</priority>\n  </url>\n"
-        for p, c in PAGES.items()
+        for c in seo_pages for p in [c["path"]]
     )
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{urls}</urlset>\n'
 
@@ -293,8 +386,15 @@ seo_public_router = APIRouter(prefix="/public/seo", tags=["Public SEO"])
 
 
 @seo_public_router.get("/meta")
-async def public_meta(request: Request, path: str = "/"):
-    return await resolve_meta(path, request)
+async def public_meta(request: Request, path: str = "/", origin: str = None):
+    return await resolve_meta(path, request, origin)
+
+
+@seo_public_router.get("/site-config")
+async def public_site_config():
+    """Enabled public pages + tracking config for the website SPA."""
+    seo = await load_seo()
+    return {"pages": [{"path": p["path"], "label": p["label"]} for p in seo["pages"]], "tracking": tracking_config(seo)}
 
 
 @seo_public_router.get("/sitemap.xml")
@@ -310,7 +410,7 @@ async def public_robots(request: Request):
 @seo_public_router.get("/render")
 async def public_render(request: Request, path: str = "/"):
     """Server-rendered index.html with page meta injected (used for previewing the SSR output)."""
-    return HTMLResponse(inject_head(await get_index_template(), await resolve_meta(path, request)))
+    return HTMLResponse(inject_head(await get_index_template(), await resolve_meta(path, request), tracking_config(await load_seo())))
 
 
 @seo_public_router.get("/media/{name}")
@@ -343,4 +443,4 @@ async def root_page(full_path: str, request: Request):
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
     path = "/" + full_path.strip("/")
-    return HTMLResponse(inject_head(await get_index_template(), await resolve_meta(path, request)))
+    return HTMLResponse(inject_head(await get_index_template(), await resolve_meta(path, request), tracking_config(await load_seo())))

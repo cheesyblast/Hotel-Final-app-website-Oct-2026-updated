@@ -25,7 +25,7 @@ export default function SeoHead() {
 
   useEffect(() => {
     let alive = true;
-    axios.get(`${API}/public/seo/meta`, { params: { path: pathname } })
+    axios.get(`${API}/public/seo/meta`, { params: { path: pathname, origin: window.location.origin } })
       .then((r) => {
         if (!alive) return;
         if (!cleaned) {
@@ -42,6 +42,9 @@ export default function SeoHead() {
 
   if (!meta) return null;
   const { og, twitter } = meta;
+  // Social scrapers need absolute https URLs
+  const abs = (u) => (u && !/^https?:\/\//.test(u) ? new URL(u, window.location.origin).href : u);
+  const image = abs(og.image || twitter.image);
   return (
     <Helmet prioritizeSeoTags>
       <title>{meta.title}</title>
@@ -54,11 +57,11 @@ export default function SeoHead() {
       <meta property="og:description" content={og.description} />
       <meta property="og:url" content={og.url} />
       <meta property="og:site_name" content={og.site_name} />
-      {og.image && <meta property="og:image" content={og.image} />}
+      {image && <meta property="og:image" content={image} />}
       <meta name="twitter:card" content={twitter.card} />
       <meta name="twitter:title" content={twitter.title} />
       <meta name="twitter:description" content={twitter.description} />
-      {twitter.image && <meta name="twitter:image" content={twitter.image} />}
+      {image && <meta name="twitter:image" content={image} />}
       {twitter.site && <meta name="twitter:site" content={twitter.site} />}
     </Helmet>
   );

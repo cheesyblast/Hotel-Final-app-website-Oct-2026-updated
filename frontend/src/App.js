@@ -4,7 +4,8 @@ import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from "react
 import axios from "axios";
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from 'recharts';
-import Website from "./Website";
+import Website, { SitePagesContext } from "./Website";
+import { injectTracking, trackPageView } from "./tracking";
 import FeedbackPage from "./FeedbackPage";
 import GuestFeedback from "./GuestFeedback";
 import { printReceipt } from "./receipt";
@@ -14963,24 +14964,47 @@ const PreviewSiteSwitch = ({ target }) => (
   </a>
 );
 
+const POLICY_PAGES = { "/terms": "terms", "/privacy-policy": "privacy", "/refund-policy": "refund" };
+
+const publicPageElement = (path) => {
+  if (path === "/") return <Website />;
+  if (POLICY_PAGES[path]) return <Website page={POLICY_PAGES[path]} />;
+  return <Website section={path.slice(1).split("/")[0]} />;
+};
+
+// Routes come from the CRM SEO page list; removed pages fall through to "/"
+const PublicRoutes = () => {
+  const [config, setConfig] = useState(null);
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    axios.get(`${API}/public/seo/site-config`)
+      .then((r) => setConfig(r.data))
+      .catch(() => setConfig({ pages: null, tracking: null }));
+  }, []);
+  useEffect(() => { if (config?.tracking) injectTracking(config.tracking); }, [config]);
+  useEffect(() => { trackPageView(); }, [pathname]);
+
+  if (!config) return null;
+  const paths = config.pages ? config.pages.map((p) => p.path) : ["/", "/rooms", "/gallery", "/about", "/contact", ...Object.keys(POLICY_PAGES)];
+  return (
+    <SitePagesContext.Provider value={config.pages ? paths : null}>
+      <SeoHead />
+      <Routes>
+        {paths.map((path) => <Route key={path} path={path} element={publicPageElement(path)} />)}
+        <Route path="/feedback/:token" element={<FeedbackPage />} />
+        <Route path="*" element={<Navigate replace to="/" />} />
+      </Routes>
+    </SitePagesContext.Provider>
+  );
+};
+
 const PublicSite = ({ preview }) => (
   <HelmetProvider>
-  <BrowserRouter>
-    <SeoHead />
-    <Routes>
-      <Route path="/" element={<Website />} />
-      <Route path="/rooms" element={<Website section="rooms" />} />
-      <Route path="/gallery" element={<Website section="gallery" />} />
-      <Route path="/about" element={<Website section="about" />} />
-      <Route path="/contact" element={<Website section="contact" />} />
-      <Route path="/refund-policy" element={<Website page="refund" />} />
-      <Route path="/privacy-policy" element={<Website page="privacy" />} />
-      <Route path="/terms" element={<Website page="terms" />} />
-      <Route path="/feedback/:token" element={<FeedbackPage />} />
-      <Route path="*" element={<Navigate replace to="/" />} />
-    </Routes>
-    {preview && <PreviewSiteSwitch target="crm" />}
-  </BrowserRouter>
+    <BrowserRouter>
+      <PublicRoutes />
+      {preview && <PreviewSiteSwitch target="crm" />}
+    </BrowserRouter>
   </HelmetProvider>
 );
 

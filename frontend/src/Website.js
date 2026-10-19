@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext, createContext } from "react";
 import axios from "axios";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { trackPurchase } from "./tracking";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -21,7 +22,33 @@ const HOTEL_PHOTOS = [
 
 const formatLKR = (n) => `LKR ${(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 const SECTION_BY_PATH = { "/": "hero", "/rooms": "rooms", "/gallery": "gallery", "/about": "about", "/contact": "contact" };
+// Paths enabled in CRM SEO settings (null = all built-in pages enabled)
+export const SitePagesContext = createContext(null);
+const useSiteLink = () => {
+  const enabled = useContext(SitePagesContext);
+  const navigate = useNavigate();
+  const isEnabled = (path) => !enabled || enabled.includes(path);
+  const go = (path) => {
+    const id = SECTION_BY_PATH[path];
+    if (window.location.pathname === path || (!isEnabled(path) && window.location.pathname === "/")) return scrollTo(id);
+    if (isEnabled(path)) navigate(path); else navigate("/", { state: { section: id } });
+  };
+  return { isEnabled, go };
+};
 const scrollTo = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
+
+// Fire GA4 / GTM / Meta purchase once PayHere has confirmed the order (notify may lag the redirect)
+const trackConfirmedPurchase = async (order, attempt = 0) => {
+  try {
+    const { data } = await axios.get(`${API}/public/booking/status/${order}`);
+    if (data.status === "confirmed" || attempt >= 5) {
+      const value = Number(data.paid_amount ?? data.payment_amount ?? 0);
+      if (value > 0) trackPurchase({ transaction_id: data.order_id, value, currency: "LKR", item_name: data.room_type });
+      return;
+    }
+  } catch (e) { if (attempt >= 5) return; }
+  setTimeout(() => trackConfirmedPurchase(order, attempt + 1), 2000);
+};
 
 /* ──────── BRAND COLORS ──────── */
 // Navy: #1a1464   Red: #e41e2e   White: #ffffff
@@ -38,8 +65,7 @@ const Navbar = () => {
   const policiesRef = useRef(null);
   useEffect(() => { const h = () => setScrolled(window.scrollY > 40); window.addEventListener("scroll", h); return () => window.removeEventListener("scroll", h); }, []);
   useEffect(() => { const h = (e) => { if (policiesRef.current && !policiesRef.current.contains(e.target)) setPoliciesOpen(false); }; document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h); }, []);
-  const navigate = useNavigate();
-  const go = (path) => { if (window.location.pathname === path) scrollTo(SECTION_BY_PATH[path]); else navigate(path); };
+  const { isEnabled, go } = useSiteLink();
   const links = [
     { label: "Home", to: "/" }, { label: "Rooms", to: "/rooms" },
     { label: "Gallery", to: "/gallery" }, { label: "About", to: "/about" }, { label: "Contact", to: "/contact" },
@@ -48,7 +74,7 @@ const Navbar = () => {
     { label: "Refund Policy", href: "/refund-policy" },
     { label: "Privacy Policy", href: "/privacy-policy" },
     { label: "Terms & Conditions", href: "/terms" },
-  ];
+  ].filter((p) => isEnabled(p.href));
   return (
     <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${scrolled ? "bg-white shadow-md" : "bg-white/80 backdrop-blur-sm"}`}>
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
@@ -194,7 +220,12 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
   // PayHere return check
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("booking") === "success") { setStep(4); window.history.replaceState({}, "", "/"); }
+    if (params.get("booking") === "success") {
+      setStep(4);
+      window.history.replaceState({}, "", "/");
+      const order = params.get("order");
+      if (order) trackConfirmedPurchase(order);
+    }
     else if (params.get("booking") === "cancelled") { setError("Payment cancelled."); setStep(1); window.history.replaceState({}, "", "/"); }
   }, []);
 
@@ -588,7 +619,9 @@ const Contact = ({ hotelInfo }) => {
 };
 
 /* ════════════ FOOTER ════════════ */
-const Footer = () => (
+const Footer = () => {
+  const { isEnabled, go } = useSiteLink();
+  return (
   <footer className="bg-[#0e0b30] text-white">
     {/* Main footer */}
     <div className="max-w-7xl mx-auto px-6 pt-16 pb-10">
@@ -603,7 +636,7 @@ const Footer = () => (
           <h4 className="text-white font-semibold text-sm uppercase tracking-wider mb-4">Quick Links</h4>
           <ul className="space-y-2.5">
             {Object.entries(SECTION_BY_PATH).map(([path, id]) => (
-              <li key={path}><Link to={path} onClick={() => window.location.pathname === path && scrollTo(id)} className="text-white/50 hover:text-white text-sm transition-colors capitalize">{id === "hero" ? "Home" : id}</Link></li>
+              <li key={path}><Link to={isEnabled(path) ? path : "/"} onClick={(e) => { e.preventDefault(); go(path); }} className="text-white/50 hover:text-white text-sm transition-colors capitalize">{id === "hero" ? "Home" : id}</Link></li>
             ))}
           </ul>
         </div>
@@ -611,9 +644,9 @@ const Footer = () => (
         <div>
           <h4 className="text-white font-semibold text-sm uppercase tracking-wider mb-4">Policies</h4>
           <ul className="space-y-2.5">
-            <li><a href="/refund-policy" className="text-white/50 hover:text-white text-sm transition-colors">Refund Policy</a></li>
-            <li><a href="/privacy-policy" className="text-white/50 hover:text-white text-sm transition-colors">Privacy Policy</a></li>
-            <li><a href="/terms" className="text-white/50 hover:text-white text-sm transition-colors">Terms & Conditions</a></li>
+            {[["/refund-policy", "Refund Policy"], ["/privacy-policy", "Privacy Policy"], ["/terms", "Terms & Conditions"]].filter(([h]) => isEnabled(h)).map(([h, l]) => (
+              <li key={h}><a href={h} className="text-white/50 hover:text-white text-sm transition-colors">{l}</a></li>
+            ))}
           </ul>
         </div>
         {/* Contact */}
@@ -650,6 +683,7 @@ const Footer = () => (
     </div>
   </footer>
 );
+};
 
 /* ════════════ POLICY PAGE WRAPPER ════════════ */
 const PolicyPage = ({ title, children }) => (
@@ -892,11 +926,13 @@ const Website = ({ page, section }) => {
     axios.get(`${API}/public/hotel-info`).then(r => setHotelInfo(r.data)).catch(() => {});
   }, []);
 
+  const location = useLocation();
+  const target = section || location.state?.section;
   useEffect(() => {
     if (page) { window.scrollTo(0, 0); return; }
-    const t = setTimeout(() => (section ? scrollTo(section) : window.scrollTo({ top: 0, behavior: "smooth" })), 80);
+    const t = setTimeout(() => (target && document.getElementById(target) ? scrollTo(target) : window.scrollTo({ top: 0, behavior: "smooth" })), 80);
     return () => clearTimeout(t);
-  }, [page, section, rooms.length]);
+  }, [page, target, rooms.length]);
 
   const handleSearch = (ci, co) => {
     setBookingDates({ checkIn: ci, checkOut: co });

@@ -1,13 +1,35 @@
 import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { Globe, Share2, Building2, FileText, Upload, X, Check, Loader2, ExternalLink, Search } from "lucide-react";
+import { Globe, Share2, Building2, FileText, Upload, X, Check, Loader2, ExternalLink, Search, Plus, Trash2, BarChart3, Lock } from "lucide-react";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND}/api`;
 
 const AMENITIES = ["Free Wi-Fi", "Air Conditioning", "Restaurant", "Room Service", "Swimming Pool", "Free Parking", "24-hour Front Desk",
   "Airport Shuttle", "Bar", "Fitness Centre", "Spa", "Laundry Service", "Flat-screen TV", "Mini Fridge", "Family Rooms", "Non-smoking Rooms"];
-const PAGE_LABELS = { "/": "Home", "/rooms": "Rooms", "/gallery": "Gallery", "/about": "About", "/contact": "Contact", "/terms": "Terms & Conditions" };
+const PATH_RE = /^\/[a-z0-9]+(?:[-/][a-z0-9]+)*$/;
+const RESERVED = ["/api", "/feedback", "/static", "/sitemap.xml", "/robots.txt"];
+const ID_RULES = { ga4_id: [/^G-[A-Z0-9]{4,20}$/, "G-XXXXXXXXXX"], gtm_id: [/^GTM-[A-Z0-9]{4,12}$/, "GTM-XXXXXXX"], pixel_id: [/^\d{8,20}$/, "15–16 digit number"] };
+const slugify = (v) => "/" + (v || "").toLowerCase().trim().replace(/^\/+/, "").replace(/[^a-z0-9/]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+const homePage = (seo) => seo.pages.find((p) => p.path === "/") || {};
+// Live website base for "Open" links: canonical, else app.<domain> -> <domain>
+const guessSiteBase = (canonical) => {
+  if (canonical) return canonical.replace(/\/$/, "");
+  const h = window.location.hostname;
+  return h.startsWith("app.") ? `https://${h.slice(4)}` : "";
+};
+
+export const validateSeo = (seo) => {
+  const seen = new Set();
+  for (const pg of seo.pages) {
+    if (pg.path !== "/" && (!PATH_RE.test(pg.path) || RESERVED.some((r) => pg.path.startsWith(r)))) return `Page "${pg.label || pg.path || "untitled"}" needs a valid URL path like /spa-wellness`;
+    if (!pg.label?.trim()) return `Page ${pg.path} needs a name`;
+    if (seen.has(pg.path)) return `Duplicate URL path ${pg.path}`;
+    seen.add(pg.path);
+  }
+  for (const [k, [rx, hint]] of Object.entries(ID_RULES)) if (seo[k] && !rx.test(seo[k].trim())) return `${k.replace("_id", "").toUpperCase()} ID should look like ${hint}`;
+  return "";
+};
 
 const inputCls = "w-full bg-gray-700 border border-gray-600 text-white text-sm rounded-md px-3 py-2 focus:outline-none focus:border-blue-500 placeholder-gray-500";
 const mediaUrl = (u) => (u && u.startsWith("/") ? `${BACKEND}${u}` : u);
@@ -118,7 +140,7 @@ const ImageUpload = ({ value, onChange }) => {
 
 const GlobalMeta = ({ seo, set, hotelName, city }) => {
   const fill = (t) => (t || "").replaceAll("{Hotel Name}", seo.schema.name || seo.site_title || hotelName).replaceAll("{City}", seo.schema.city || city).replaceAll("{Page}", "Home");
-  const titlePreview = fill(seo.pages["/"]?.title || seo.title_format);
+  const titlePreview = fill(homePage(seo).title || seo.title_format);
   return (
     <Section icon={Globe} title="Global Meta Settings" subtitle="Default title, description and indexing rules for search engines" testId="seo-section-global">
       <div className="grid md:grid-cols-2 gap-4">
@@ -137,8 +159,8 @@ const GlobalMeta = ({ seo, set, hotelName, city }) => {
       <Field label="Focus Keywords" hint="Press Enter or comma to add a keyword">
         <TagInput tags={seo.meta_keywords} onChange={(meta_keywords) => set({ meta_keywords })} />
       </Field>
-      <Field label="Canonical Domain URL" hint="Your primary public address. Used for canonical links, sitemap and social cards.">
-        <input className={inputCls} value={seo.canonical_url} onChange={(e) => set({ canonical_url: e.target.value })} placeholder="https://www.kreationhotels.com" data-testid="seo-canonical-url" />
+      <Field label="Canonical Domain URL" hint="Your primary public address, used for canonical links, sitemap and social cards. Leave empty to auto-detect the domain visitors use. Preview (emergentagent.com) addresses are ignored on the live site.">
+        <input className={inputCls} value={seo.canonical_url} onChange={(e) => set({ canonical_url: e.target.value })} placeholder="Auto-detect (e.g. https://www.kreationhotels.com)" data-testid="seo-canonical-url" />
       </Field>
       <div>
         <span className="block text-sm font-medium text-gray-300 mb-2">Robots Directives</span>
@@ -149,7 +171,7 @@ const GlobalMeta = ({ seo, set, hotelName, city }) => {
       </div>
       <div>
         <span className="block text-xs uppercase tracking-wider text-gray-500 mb-2">Google preview (Home)</span>
-        <SearchPreview title={titlePreview} url={seo.canonical_url} description={fill(seo.pages["/"]?.description || seo.meta_description)} />
+        <SearchPreview title={titlePreview} url={seo.canonical_url} description={fill(homePage(seo).description || seo.meta_description)} />
       </div>
     </Section>
   );
@@ -236,21 +258,73 @@ const SchemaMeta = ({ seo, setSchema }) => {
   );
 };
 
-const PageOverrides = ({ seo, setPage, base }) => (
-  <Section icon={FileText} title="Page-by-Page Overrides" subtitle="Custom titles and descriptions per page. Leave empty to use the defaults." testId="seo-section-pages">
-    {Object.entries(PAGE_LABELS).map(([path, label]) => (
-      <div key={path} className="rounded-md border border-gray-700 p-4 space-y-3" data-testid={`seo-page-${label.toLowerCase().replace(/\W+/g, "-")}`}>
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-white">{label} <span className="text-gray-500 font-normal">{path}</span></span>
-          {base && <a href={`${base}${path}`} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300 inline-flex items-center gap-1">Open <ExternalLink className="w-3 h-3" /></a>}
+const PageCard = ({ pg, idx, setPage, removePage, base }) => {
+  const home = pg.path === "/";
+  const tid = home ? "home" : String(idx);
+  return (
+    <div className={`rounded-md border p-4 space-y-3 ${home ? "border-blue-500/40 bg-blue-500/5" : "border-gray-700"}`} data-testid={`seo-page-card-${tid}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        {home ? (
+          <span className="text-sm font-semibold text-white inline-flex items-center gap-2"><Lock className="w-3.5 h-3.5 text-blue-400" /> Home <span className="text-gray-500 font-normal">/</span></span>
+        ) : (
+          <div className="flex flex-1 flex-wrap gap-2">
+            <input className={`${inputCls} sm:max-w-[220px]`} value={pg.label} onChange={(e) => setPage(idx, { label: e.target.value })} placeholder="Page name, e.g. Dining" data-testid={`seo-page-label-${tid}`} />
+            <input className={`${inputCls} sm:max-w-[220px] font-mono`} value={pg.path} onChange={(e) => setPage(idx, { path: e.target.value })}
+              onBlur={(e) => setPage(idx, { path: slugify(e.target.value || pg.label) })} placeholder="/dining" data-testid={`seo-page-path-${tid}`} />
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          {base && (home || PATH_RE.test(pg.path)) && <a href={`${base}${pg.path}`} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:text-blue-300 inline-flex items-center gap-1">Open <ExternalLink className="w-3 h-3" /></a>}
+          {!home && (
+            <button type="button" onClick={() => removePage(idx)} className="p-1.5 rounded text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors" aria-label="Delete page" data-testid={`seo-page-delete-${tid}`}>
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
-        <input className={inputCls} value={seo.pages[path]?.title || ""} onChange={(e) => setPage(path, { title: e.target.value })} placeholder="Custom meta title" data-testid={`seo-page-title-${path === "/" ? "home" : path.slice(1)}`} />
-        <textarea rows={2} className={inputCls} value={seo.pages[path]?.description || ""} onChange={(e) => setPage(path, { description: e.target.value })} placeholder="Custom meta description" data-testid={`seo-page-description-${path === "/" ? "home" : path.slice(1)}`} />
-        <CharCounter value={seo.pages[path]?.description} testId={`seo-page-counter-${path === "/" ? "home" : path.slice(1)}`} />
       </div>
-    ))}
+      <input className={inputCls} value={pg.title || ""} onChange={(e) => setPage(idx, { title: e.target.value })} placeholder="Custom meta title (leave empty for default)" data-testid={`seo-page-title-${tid}`} />
+      <textarea rows={2} className={inputCls} value={pg.description || ""} onChange={(e) => setPage(idx, { description: e.target.value })} placeholder="Custom meta description" data-testid={`seo-page-description-${tid}`} />
+      <CharCounter value={pg.description} testId={`seo-page-counter-${tid}`} />
+    </div>
+  );
+};
+
+const PageOverrides = ({ seo, setPage, addPage, removePage, base }) => (
+  <Section icon={FileText} title="Page-by-Page Overrides" subtitle="Pages listed here are published on the website and in sitemap.xml. Delete pages your hotel doesn't offer." testId="seo-section-pages">
+    {seo.pages.map((pg, idx) => <PageCard key={idx} pg={pg} idx={idx} setPage={setPage} removePage={removePage} base={base} />)}
+    <button type="button" onClick={addPage} className="w-full inline-flex items-center justify-center gap-2 rounded-md border border-dashed border-gray-600 py-3 text-sm text-gray-300 hover:border-blue-500 hover:text-white transition-colors" data-testid="seo-add-page-btn">
+      <Plus className="w-4 h-4" /> Add Page Override
+    </button>
   </Section>
 );
+
+const AnalyticsSettings = ({ seo, set }) => {
+  const idField = (key, label, hint) => {
+    const bad = seo[key] && !ID_RULES[key][0].test(seo[key].trim());
+    return (
+      <Field label={label} hint={bad ? undefined : hint}>
+        <input className={`${inputCls} font-mono ${bad ? "border-red-500" : ""}`} value={seo[key] || ""} onChange={(e) => set({ [key]: e.target.value.trim().toUpperCase() })} placeholder={ID_RULES[key][1]} data-testid={`seo-${key.replace("_", "-")}`} />
+        {bad && <span className="block text-xs text-red-400 mt-1">Format should be {ID_RULES[key][1]}</span>}
+      </Field>
+    );
+  };
+  const code = "w-full bg-gray-900 border border-gray-600 text-emerald-200 text-xs font-mono rounded-md px-3 py-2 focus:outline-none focus:border-blue-500 placeholder-gray-600";
+  return (
+    <Section icon={BarChart3} title="Analytics, Tracking Pixels & Custom Scripts" subtitle="Loaded on the public booking website only - never inside the CRM. Successful bookings send a purchase event (LKR) to GA4, Tag Manager and Meta Pixel." testId="seo-section-analytics">
+      <div className="grid md:grid-cols-3 gap-4">
+        {idField("ga4_id", "GA4 Measurement ID", "Google Analytics → Admin → Data streams")}
+        {idField("gtm_id", "GTM Container ID", "Google Tag Manager → Container")}
+        {idField("pixel_id", "Meta (Facebook) Pixel ID", "Meta Events Manager → Data sources")}
+      </div>
+      <Field label="Header Code Snippet" hint="Inserted before </head> - e.g. site verification tags. Only paste code from providers you trust.">
+        <textarea rows={4} className={code} value={seo.head_code || ""} onChange={(e) => set({ head_code: e.target.value })} spellCheck={false} placeholder={'<meta name="google-site-verification" content="..." />'} data-testid="seo-head-code" />
+      </Field>
+      <Field label="Footer / Body Code Snippet" hint="Inserted before </body> - e.g. chat widgets.">
+        <textarea rows={4} className={code} value={seo.body_code || ""} onChange={(e) => set({ body_code: e.target.value })} spellCheck={false} placeholder={'<script src="https://widget.example.com/chat.js" async></script>'} data-testid="seo-body-code" />
+      </Field>
+    </Section>
+  );
+};
 
 export default function SeoSettings() {
   const [seo, setSeo] = useState(null);
@@ -266,8 +340,16 @@ export default function SeoSettings() {
 
   const set = (patch) => setSeo((s) => ({ ...s, ...patch }));
   const setSchema = (patch) => setSeo((s) => ({ ...s, schema: { ...s.schema, ...patch } }));
-  const setPage = (path, patch) => setSeo((s) => ({ ...s, pages: { ...s.pages, [path]: { ...s.pages[path], ...patch } } }));
+  const setPage = (idx, patch) => setSeo((s) => ({ ...s, pages: s.pages.map((p, i) => (i === idx ? { ...p, ...patch } : p)) }));
+  const addPage = () => setSeo((s) => ({ ...s, pages: [...s.pages, { path: "", label: "", title: "", description: "" }] }));
+  const removePage = (idx) => {
+    const pg = seo.pages[idx];
+    if (window.confirm(`Remove "${pg.label || pg.path || "this page"}"? It will disappear from the sitemap and its address will redirect to the home page.`))
+      setSeo((s) => ({ ...s, pages: s.pages.filter((_, i) => i !== idx) }));
+  };
   const save = async () => {
+    const invalid = validateSeo(seo);
+    if (invalid) { setStatus({ saving: false, msg: invalid, error: true }); return; }
     setStatus({ saving: true, msg: "", error: false });
     try {
       const r = await axios.put(`${API}/seo/settings`, seo);
@@ -277,7 +359,7 @@ export default function SeoSettings() {
       setStatus({ saving: false, msg: e.response?.data?.detail || "Save failed", error: true });
     }
   };
-  const siteBase = (seo.canonical_url || "").replace(/\/$/, "");
+  const siteBase = guessSiteBase(seo.canonical_url);
 
   return (
     <div className="space-y-6" data-testid="seo-settings">
@@ -295,7 +377,8 @@ export default function SeoSettings() {
       <GlobalMeta seo={seo} set={set} hotelName={hotel.hotel_name || "Kreation Hotels"} city="Colombo" />
       <SocialMeta seo={seo} set={set} />
       <SchemaMeta seo={seo} setSchema={setSchema} />
-      <PageOverrides seo={seo} setPage={setPage} base={siteBase} />
+      <PageOverrides seo={seo} setPage={setPage} addPage={addPage} removePage={removePage} base={siteBase} />
+      <AnalyticsSettings seo={seo} set={set} />
 
       <div className="sticky bottom-0 z-10 -mx-2 px-2 py-3 bg-gray-900/90 backdrop-blur border-t border-gray-700 flex flex-wrap items-center justify-end gap-3">
         {status.msg && <span className={`text-sm ${status.error ? "text-red-400" : "text-emerald-400"}`} data-testid="seo-save-status">{status.msg}</span>}

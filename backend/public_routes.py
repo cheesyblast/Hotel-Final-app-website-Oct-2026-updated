@@ -453,7 +453,8 @@ async def payhere_payment_notify(request: Request):
         primary_booking_id = booking_ids[0] if booking_ids else ""
         await db.booking_holds.update_one(
             {"order_id": order_id},
-            {"$set": {"status": "confirmed", "payment_id": payment_id, "confirmed_at": datetime.now(timezone.utc), "booking_id": primary_booking_id}}
+            {"$set": {"status": "confirmed", "payment_id": payment_id, "confirmed_at": datetime.now(timezone.utc), "booking_id": primary_booking_id,
+                      "paid_amount": float(payhere_amount or 0), "paid_currency": payhere_currency}}
         )
 
         try:
@@ -562,6 +563,8 @@ async def get_booking_status(order_id: str):
         "check_in": hold.get("check_in").strftime("%Y-%m-%d") if isinstance(hold.get("check_in"), datetime) else str(hold.get("check_in", "")),
         "check_out": hold.get("check_out").strftime("%Y-%m-%d") if isinstance(hold.get("check_out"), datetime) else str(hold.get("check_out", "")),
         "payment_amount": hold.get("payment_amount"),
+        "paid_amount": hold.get("paid_amount"),
+        "currency": hold.get("paid_currency") or "LKR",
         "guest_name": hold.get("guest_name"),
     }
 
