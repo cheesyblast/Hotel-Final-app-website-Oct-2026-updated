@@ -130,6 +130,7 @@ Each client gets their own:
 | `PAYHERE_MERCHANT_SECRET` | Website | PayHere merchant secret |
 | `PAYHERE_BASE_URL` | Website | `https://www.payhere.lk` for live |
 | `TURNSTILE_SECRET_KEY` | Website | Cloudflare Turnstile secret |
+| `PUBLIC_WEBSITE_URL` | CRM | Public website base URL used in guest feedback links (e.g. https://kreationhotels.com) |
 | `REACT_APP_BACKEND_URL` | Both FE | Backend API URL |
 | `REACT_APP_TURNSTILE_SITE_KEY` | Website FE | Turnstile site key |
 | `CRM_API_URL` | Website BE | CRM backend URL (for shared DB) |

@@ -10,6 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
+import asyncio
 from datetime import datetime, date, timedelta
 import json
 import csv
@@ -322,7 +323,7 @@ class FinancialSummary(BaseModel):
 AVAILABLE_PAGES = [
     "dashboard", "calendar", "restaurant", "rooms", "guests", "bookings",
     "income_expense", "expenses", "stocks", "commissions", "reports",
-    "payroll", "maintenance", "settings"
+    "payroll", "maintenance", "settings", "feedback"
 ]
 
 class User(BaseModel):
@@ -2614,7 +2615,8 @@ async def get_available_pages():
         {"id": "commissions", "name": "Commissions", "description": "Commission tracking"},
         {"id": "payroll", "name": "Payroll", "description": "Employee payroll management"},
         {"id": "maintenance", "name": "Maintenance", "description": "Room maintenance tracking"},
-        {"id": "settings", "name": "Settings", "description": "System settings"}
+        {"id": "settings", "name": "Settings", "description": "System settings"},
+        {"id": "feedback", "name": "Guest Feedback", "description": "Guest ratings and reviews"}
     ]
     return pages
 
@@ -3831,6 +3833,7 @@ async def checkout_customer(checkout: CheckoutRequest):
         await send_notifications(notification_data, "checkout")
     except Exception as e:
         print(f"Checkout notification error (non-critical): {str(e)}")
+    asyncio.create_task(send_feedback_request(result))
     
     return {
         "message": "Customer checked out successfully",
@@ -4148,6 +4151,8 @@ async def early_checkout_customer(
             "refund_given": checkout_request.refund_excess
         }
     )
+    updated_customer = await db.customers.find_one({"id": checkout_request.customer_id})
+    asyncio.create_task(send_feedback_request(updated_customer))
     
     return {
         "message": "Early checkout completed successfully",
@@ -8113,6 +8118,193 @@ async def export_commissions(format: str = "csv", start_date: Optional[str] = No
         )
     
     return commission_data
+
+# ==================== GUEST FEEDBACK ====================
+def _date_str(v):
+    if isinstance(v, datetime):
+        return v.strftime("%Y-%m-%d")
+    if isinstance(v, date):
+        return v.isoformat()
+    return str(v)[:10] if v else ""
+
+async def send_feedback_request(customer: dict):
+    """Create a feedback request for a checked-out guest and send it via email + SMS."""
+    try:
+        email = (customer.get("email") or "").strip()
+        phone = (customer.get("phone") or "").strip()
+        if not email and not phone:
+            return
+        if await db.feedback_requests.find_one({"customer_id": customer["id"]}):
+            return
+        settings = await db.settings.find_one({}, {"_id": 0}) or {}
+        hotel_name = settings.get("hotel_name") or "our hotel"
+        token = secrets.token_urlsafe(16)
+        link = f"{os.environ.get('PUBLIC_WEBSITE_URL', '').rstrip('/')}/feedback/{token}"
+        name = customer.get("name", "Guest")
+        doc = {
+            "id": str(uuid.uuid4()),
+            "token": token,
+            "customer_id": customer["id"],
+            "guest_name": name,
+            "guest_email": email,
+            "guest_phone": phone,
+            "room_number": customer.get("current_room", ""),
+            "check_in_date": _date_str(customer.get("check_in_date")),
+            "check_out_date": _date_str(customer.get("actual_checkout_date") or customer.get("check_out_date")),
+            "status": "pending",
+            "created_at": datetime.utcnow(),
+            "email_sent": False,
+            "sms_sent": False,
+        }
+        await db.feedback_requests.insert_one(doc)
+        email_sent = sms_sent = False
+        if email:
+            body = (
+                f"Dear {name},\n\nThank you for staying with us at {hotel_name}. "
+                f"We would love to hear about your experience - it takes less than a minute:\n\n{link}\n\n"
+                f"Warm regards,\n{hotel_name}"
+            )
+            email_sent = bool(await send_email(email, f"How was your stay at {hotel_name}?", body))
+        if phone:
+            sms_sent = bool(await send_sms(phone, f"Dear {name}, thank you for staying at {hotel_name}! Please rate your stay: {link}"))
+        await db.feedback_requests.update_one({"id": doc["id"]}, {"$set": {"email_sent": email_sent, "sms_sent": sms_sent}})
+    except Exception as e:
+        print(f"Feedback request error (non-critical): {e}")
+
+@api_router.get("/feedback")
+async def list_feedback(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    min_rating: Optional[int] = None,
+    max_rating: Optional[int] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    docs = await db.feedback_requests.find({}, {"_id": 0, "token": 0}).sort("created_at", -1).to_list(5000)
+    responses = [d for d in docs if d.get("status") == "submitted"]
+
+    def avg(key):
+        vals = [d[key] for d in responses if isinstance(d.get(key), (int, float)) and d.get(key)]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    stats = {
+        "total_requests": len(docs),
+        "total_responses": len(responses),
+        "response_rate": round(len(responses) * 100 / len(docs), 1) if docs else 0,
+        "avg_overall": avg("overall_rating"),
+        "avg_cleanliness": avg("cleanliness_rating"),
+        "avg_staff": avg("staff_rating"),
+        "avg_food": avg("food_rating"),
+        "avg_comfort": avg("comfort_rating"),
+        "distribution": {str(i): sum(1 for d in responses if d.get("overall_rating") == i) for i in range(1, 6)},
+    }
+
+    items = docs
+    if status_filter in ("pending", "submitted"):
+        items = [d for d in items if d.get("status") == status_filter]
+    if min_rating:
+        items = [d for d in items if (d.get("overall_rating") or 0) >= min_rating]
+    if max_rating:
+        items = [d for d in items if d.get("overall_rating") and d["overall_rating"] <= max_rating]
+    if search:
+        s = search.lower()
+        items = [d for d in items if s in (d.get("guest_name") or "").lower() or s in (d.get("room_number") or "").lower() or s in (d.get("comment") or "").lower()]
+    if start_date:
+        items = [d for d in items if (d.get("check_out_date") or "") >= start_date]
+    if end_date:
+        items = [d for d in items if (d.get("check_out_date") or "") <= end_date]
+    for d in items:
+        for k in ("created_at", "submitted_at"):
+            if isinstance(d.get(k), datetime):
+                d[k] = d[k].isoformat()
+    return {"items": items, "stats": stats}
+
+# ==================== CHECK-OUT RECEIPT ====================
+async def build_receipt(customer: dict):
+    settings = await db.settings.find_one({}, {"_id": 0}) or {}
+    hotel = {k: settings.get(k, "") for k in ["hotel_name", "hotel_logo", "hotel_address", "hotel_phone", "hotel_contact", "hotel_email"]}
+    hotel["currency"] = settings.get("currency") or "LKR"
+    name = customer.get("name", "")
+    room = customer.get("current_room", "")
+    ci = _date_str(customer.get("check_in_date"))
+    co = _date_str(customer.get("actual_checkout_date") or customer.get("check_out_date"))
+    try:
+        nights = max(1, (datetime.strptime(co, "%Y-%m-%d") - datetime.strptime(ci, "%Y-%m-%d")).days)
+    except ValueError:
+        nights = 1
+
+    orders = []
+    async for o in db.restaurant_orders.find({"room_number": room, "order_status": {"$ne": "Cancelled"}, "payment_status": {"$ne": "Cancelled"}}, {"_id": 0}):
+        od = _date_str(o.get("order_date"))
+        if ci <= od <= co:
+            orders.append({
+                "order_number": o.get("order_number", ""),
+                "date": od,
+                "items": [{"name": i.get("menu_item_name", ""), "quantity": i.get("quantity", 0), "unit_price": i.get("unit_price", 0), "total": i.get("total_price", 0)} for i in o.get("items", [])],
+                "total_amount": o.get("total_amount", 0),
+            })
+
+    payments = []
+    async for s in db.daily_sales.find({"customer_name": name, "sale_type": "room_booking_advance"}, {"_id": 0}):
+        d = _date_str(s.get("date"))
+        if ci <= d <= co:
+            payments.append({"date": d, "description": "Advance at check-in", "method": s.get("payment_method", ""), "amount": s.get("total_amount", 0)})
+    async for i in db.incomes.find({"guest_name": name, "category": "Advance Payment"}, {"_id": 0}):
+        d = _date_str(i.get("income_date"))
+        if ci <= d <= co:
+            payments.append({"date": d, "description": "Advance payment", "method": i.get("payment_method", ""), "amount": i.get("amount", 0)})
+    payments.sort(key=lambda p: p["date"])
+
+    final_sale = await db.daily_sales.find_one(
+        {"customer_name": name, "room_number": room, "sale_type": {"$exists": False}}, {"_id": 0}, sort=[("date", -1)]
+    )
+    room_charges = float(customer.get("room_charges") or 0)
+    restaurant = float(customer.get("restaurant_charges") or 0)
+    additional = float(customer.get("additional_charges") or 0)
+    discount = float(customer.get("discount_amount") or 0)
+    taxes = float(customer.get("taxes") or 0)
+    advance = float(customer.get("advance_amount") or 0)
+    grand_total = room_charges + restaurant + additional - discount + taxes
+    booking = await db.bookings.find_one({"guest_name": name, "room_number": room}, {"_id": 0, "booking_channel_name": 1}, sort=[("created_at", -1)])
+    return {
+        "receipt_number": f"RCPT-{customer['id'][:8].upper()}",
+        "issued_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "hotel": hotel,
+        "guest": {"name": name, "email": customer.get("email", ""), "phone": customer.get("phone", "")},
+        "stay": {
+            "room_number": room, "check_in_date": ci, "check_out_date": co, "nights": nights,
+            "rate_per_night": round(room_charges / nights, 2), "channel": (booking or {}).get("booking_channel_name") or "Direct",
+            "is_checked_out": bool(customer.get("is_checked_out")),
+        },
+        "restaurant_orders": orders,
+        "payments": payments,
+        "totals": {
+            "room_charges": room_charges, "restaurant_charges": restaurant, "additional_charges": additional,
+            "discount_amount": discount, "taxes": taxes, "tax_breakdown": customer.get("tax_breakdown") or [],
+            "grand_total": grand_total, "advance_paid": advance, "balance_settled": grand_total - advance,
+            "settlement_method": (final_sale or {}).get("payment_method", ""),
+        },
+    }
+
+@api_router.get("/receipts/customer/{customer_id}")
+async def get_customer_receipt(customer_id: str, current_user: UserResponse = Depends(get_current_user)):
+    customer = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return await build_receipt(customer)
+
+@api_router.get("/receipts/booking/{booking_id}")
+async def get_booking_receipt(booking_id: str, current_user: UserResponse = Depends(get_current_user)):
+    booking = await db.bookings.find_one({"id": booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    candidates = await db.customers.find({"name": booking.get("guest_name"), "current_room": booking.get("room_number")}, {"_id": 0}).to_list(100)
+    if not candidates:
+        raise HTTPException(status_code=404, detail="No stay record found for this booking (guest was never checked in)")
+    bci = _date_str(booking.get("check_in_date"))
+    customer = next((c for c in candidates if _date_str(c.get("check_in_date")) == bci), None) or max(candidates, key=lambda c: _date_str(c.get("check_in_date")))
+    return await build_receipt(customer)
 
 # Test route
 @api_router.get("/")

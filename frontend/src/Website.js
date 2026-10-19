@@ -915,3 +915,4 @@ const Website = ({ page }) => {
 };
 
 export default Website;
+export { LOGO_URL, FONT_SERIF, FONT_SANS };

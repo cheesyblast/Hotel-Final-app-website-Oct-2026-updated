@@ -5,6 +5,9 @@ import axios from "axios";
 import * as XLSX from 'xlsx';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from 'recharts';
 import Website from "./Website";
+import FeedbackPage from "./FeedbackPage";
+import GuestFeedback from "./GuestFeedback";
+import { printReceipt } from "./receipt";
 
 // Countries list for dropdown
 const COUNTRIES = [
@@ -1010,6 +1013,8 @@ const Dashboard = () => {
   // Dropdown state for booking actions and customer actions
   const [openDropdowns, setOpenDropdowns] = useState({});
   const [openCustomerDropdowns, setOpenCustomerDropdowns] = useState({});
+  const [menuPos, setMenuPos] = useState(null);
+  const [upcomingSearch, setUpcomingSearch] = useState('');
   
   // Advance payment modal state
   const [showAdvancePaymentModal, setShowAdvancePaymentModal] = useState(false);
@@ -1113,9 +1118,14 @@ const Dashboard = () => {
       }
     };
     
+    const handleScroll = () => { closeAllDropdowns(); closeAllCustomerDropdowns(); };
     document.addEventListener('click', handleClickOutside);
+    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('resize', handleScroll);
     return () => {
       document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', handleScroll);
     };
   }, []);
 
@@ -1288,6 +1298,19 @@ const Dashboard = () => {
   const closeAllDropdowns = () => {
     setOpenDropdowns({});
   };
+
+  // Position action menus with fixed coords so table overflow can't clip them
+  const anchorMenu = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const right = window.innerWidth - r.right;
+    setMenuPos(window.innerHeight - r.bottom < 300 ? { bottom: window.innerHeight - r.top + 4, right } : { top: r.bottom + 4, right });
+  };
+
+  const upcomingQuery = upcomingSearch.trim().toLowerCase();
+  const filteredUpcoming = upcomingQuery
+    ? upcomingBookings.filter(b => [b.guest_name, b.room_number, b.guest_phone, b.guest_email, b.check_in_date, b.check_out_date, b.booking_channel_name]
+        .some(v => String(v || '').toLowerCase().includes(upcomingQuery)))
+    : upcomingBookings;
 
   // Handle booking field changes with total calculation
   const handleBookingFieldChange = (field, value) => {
@@ -1563,6 +1586,7 @@ const Dashboard = () => {
       const totalDue = actualRoomCharges + restaurantCharges + additionalAmount - discountAmount;
       const finalBalance = totalDue - advanceAmount;
       
+      const checkedOutId = selectedCustomer.id;
       const response = await axios.post(`${API}/early-checkout`, {
         customer_id: selectedCustomer.id,
         additional_amount: additionalAmount,
@@ -1601,6 +1625,8 @@ const Dashboard = () => {
         message += `\n\nRefund given: LKR ${Math.round(Math.abs(finalBalance)).toLocaleString()} (${paymentMethod})`;
       }
       alert(message);
+      setInvoiceData({ customer: { id: checkedOutId } });
+      setShowPrintInvoiceDialog(true);
     } catch (error) {
       console.error('Error processing early checkout:', error);
       alert('Error processing early checkout: ' + (error.response?.data?.detail || error.message));
@@ -1992,113 +2018,9 @@ const Dashboard = () => {
   };
 
   const handlePrintInvoice = () => {
-    const printWindow = window.open('', '_blank');
-    const invoiceHTML = generateInvoiceHTML();
-    printWindow.document.write(invoiceHTML);
-    printWindow.document.close();
-    printWindow.print();
-    printWindow.close();
+    printReceipt(`/receipts/customer/${invoiceData.customer.id}`);
     setShowPrintInvoiceDialog(false);
     setSelectedCustomer(null);
-  };
-
-  const generateInvoiceHTML = () => {
-    if (!invoiceData) return '';
-    
-    const { customer, billing, hotel_settings } = invoiceData;
-    const settings = hotel_settings || hotelSettings; // Fallback to component settings
-    const currentDate = new Date().toLocaleString();
-    
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice - ${customer.name}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
-          .header { display: flex; align-items: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 20px; }
-          .logo { width: 80px; height: 80px; margin-right: 20px; object-fit: contain; }
-          .hotel-info h1 { margin: 0; font-size: 24px; color: #2563eb; }
-          .hotel-info p { margin: 2px 0; font-size: 14px; color: #666; }
-          .invoice-details { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
-          .section { background: #f8f9fa; padding: 15px; border-radius: 8px; }
-          .section h3 { margin: 0 0 10px 0; color: #1f2937; font-size: 16px; }
-          .billing-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          .billing-table th, .billing-table td { padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
-          .billing-table th { background: #f3f4f6; font-weight: 600; }
-          .total-row { font-weight: bold; background: #dbeafe; }
-          .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          ${settings.hotel_logo ? `<img src="${settings.hotel_logo}" alt="Hotel Logo" class="logo" />` : ''}
-          <div class="hotel-info">
-            <h1>${settings.hotel_name || 'Hotel Management System'}</h1>
-            <p><strong>Address:</strong> ${settings.hotel_address || 'Hotel Address'}</p>
-            <p><strong>Phone:</strong> ${settings.hotel_phone || settings.hotel_contact || 'Contact Number'}</p>
-            <p><strong>Email:</strong> ${settings.hotel_email || 'hotel@email.com'}</p>
-          </div>
-        </div>
-
-        <h2 style="text-align: center; color: #1f2937; margin: 20px 0;">CHECKOUT INVOICE</h2>
-
-        <div class="invoice-details">
-          <div class="section">
-            <h3>Guest Information</h3>
-            <p><strong>Name:</strong> ${customer.name}</p>
-            <p><strong>Phone:</strong> ${customer.phone || 'N/A'}</p>
-            <p><strong>Room:</strong> ${customer.current_room}</p>
-            <p><strong>Check-in:</strong> ${customer.check_in_date}</p>
-            <p><strong>Check-out:</strong> ${customer.check_out_date}</p>
-          </div>
-          
-          <div class="section">
-            <h3>Invoice Details</h3>
-            <p><strong>Invoice Date:</strong> ${currentDate}</p>
-            <p><strong>Payment Method:</strong> ${billing.payment_method}</p>
-            <p><strong>Currency:</strong> ${settings.currency || 'LKR'}</p>
-          </div>
-        </div>
-
-        <table class="billing-table">
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th>Amount (${settings.currency || 'LKR'})</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Room Charges</td>
-              <td>${billing.room_charges.toFixed(2)}</td>
-            </tr>
-            <tr>
-              <td>Additional Charges</td>
-              <td>${billing.additional_charges.toFixed(2)}</td>
-            </tr>
-            <tr>
-              <td>Advance Amount (Paid)</td>
-              <td>(${billing.advance_amount.toFixed(2)})</td>
-            </tr>
-            <tr>
-              <td>Discount</td>
-              <td>(${billing.discount_amount.toFixed(2)})</td>
-            </tr>
-            <tr class="total-row">
-              <td><strong>Total Amount</strong></td>
-              <td><strong>${billing.total_amount.toFixed(2)}</strong></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="footer">
-          <p>Thank you for choosing ${settings.hotel_name || 'our hotel'}!</p>
-          <p>This is a computer-generated invoice.</p>
-        </div>
-      </body>
-      </html>
-    `;
   };
 
   const closePrintInvoiceDialog = () => {
@@ -2234,13 +2156,27 @@ const Dashboard = () => {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-white" data-testid="upcoming-bookings-title">
-            Upcoming Bookings {upcomingBookings.length > 0 && <span className="text-sm font-normal text-gray-400">({upcomingBookings.length} total)</span>}
+            Upcoming Bookings {upcomingBookings.length > 0 && <span className="text-sm font-normal text-gray-400">({upcomingSearch ? `${filteredUpcoming.length} of ` : ''}{upcomingBookings.length} total)</span>}
           </h3>
+          <div className="relative w-full sm:w-72 ml-4">
+            <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/></svg>
+            <input
+              type="text"
+              value={upcomingSearch}
+              onChange={(e) => { setUpcomingSearch(e.target.value); setUpcomingBookingsPage(1); }}
+              placeholder="Search name, room, phone, date..."
+              className="w-full pl-9 pr-8 py-2 bg-gray-700 border border-gray-600 text-white text-sm rounded-md focus:outline-none focus:border-blue-500 placeholder-gray-400"
+              data-testid="upcoming-bookings-search-input"
+            />
+            {upcomingSearch && (
+              <button onClick={() => { setUpcomingSearch(''); setUpcomingBookingsPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-sm" data-testid="upcoming-bookings-search-clear">✕</button>
+            )}
+          </div>
         </div>
         <div className="bg-gray-800 rounded-lg shadow-sm border border-gray-700 overflow-x-auto" style={{minHeight: '300px'}}>
-          {upcomingBookings.length === 0 ? (
-            <div className="p-6 text-center text-gray-400">
-              No upcoming bookings
+          {filteredUpcoming.length === 0 ? (
+            <div className="p-6 text-center text-gray-400" data-testid="upcoming-bookings-empty">
+              {upcomingSearch ? `No upcoming bookings match "${upcomingSearch}"` : 'No upcoming bookings'}
             </div>
           ) : (
             <>
@@ -2256,7 +2192,7 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
-                {upcomingBookings.slice((upcomingBookingsPage - 1) * 10, upcomingBookingsPage * 10).map((booking) => (
+                {filteredUpcoming.slice((filteredUpcomingPage - 1) * 10, filteredUpcomingPage * 10).map((booking) => (
                   <tr key={booking.id} className="hover:bg-gray-700">
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                       <div className="text-xs sm:text-sm font-medium text-white">{booking.guest_name}</div>
@@ -2275,7 +2211,8 @@ const Dashboard = () => {
                     </td>
                     <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap relative">
                       <button
-                        onClick={() => toggleDropdown(booking.id)}
+                        onClick={(e) => { anchorMenu(e); toggleDropdown(booking.id); }}
+                        data-testid={`upcoming-booking-actions-${booking.id}`}
                         className="inline-flex items-center p-1.5 sm:p-2 text-gray-400 bg-gray-700 rounded-full hover:text-gray-200 hover:bg-gray-600"
                       >
                         <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -2283,7 +2220,7 @@ const Dashboard = () => {
                         </svg>
                       </button>
                       {openDropdowns[booking.id] && (
-                        <div className="absolute right-0 z-50 mt-2 w-48 bg-gray-700 rounded-md shadow-lg ring-1 ring-black ring-opacity-5">
+                        <div className="fixed z-50 w-48 bg-gray-700 rounded-md shadow-lg ring-1 ring-black ring-opacity-5" style={menuPos || undefined}>
                           <div className="py-1">
                             <button
                               onClick={() => { handleCheckin(booking); closeAllDropdowns(); }}
@@ -2321,26 +2258,26 @@ const Dashboard = () => {
               </tbody>
             </table>
             {/* Pagination for upcoming bookings */}
-            {upcomingBookings.length > 10 && (
+            {filteredUpcoming.length > 10 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-gray-700" data-testid="upcoming-bookings-pagination">
                 <span className="text-sm text-gray-400">
-                  Showing {((upcomingBookingsPage - 1) * 10) + 1}-{Math.min(upcomingBookingsPage * 10, upcomingBookings.length)} of {upcomingBookings.length}
+                  Showing {((filteredUpcomingPage - 1) * 10) + 1}-{Math.min(filteredUpcomingPage * 10, filteredUpcoming.length)} of {filteredUpcoming.length}
                 </span>
                 <div className="flex space-x-2">
                   <button
                     onClick={() => setUpcomingBookingsPage(p => Math.max(1, p - 1))}
-                    disabled={upcomingBookingsPage === 1}
+                    disabled={filteredUpcomingPage === 1}
                     className="px-3 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
                     data-testid="upcoming-bookings-prev"
                   >
                     Previous
                   </button>
                   <span className="px-3 py-1 text-sm text-gray-300">
-                    Page {upcomingBookingsPage} / {Math.ceil(upcomingBookings.length / 10)}
+                    Page {filteredUpcomingPage} / {Math.ceil(filteredUpcoming.length / 10)}
                   </span>
                   <button
-                    onClick={() => setUpcomingBookingsPage(p => Math.min(Math.ceil(upcomingBookings.length / 10), p + 1))}
-                    disabled={upcomingBookingsPage >= Math.ceil(upcomingBookings.length / 10)}
+                    onClick={() => setUpcomingBookingsPage(p => Math.min(Math.ceil(filteredUpcoming.length / 10), p + 1))}
+                    disabled={filteredUpcomingPage >= Math.ceil(filteredUpcoming.length / 10)}
                     className="px-3 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed"
                     data-testid="upcoming-bookings-next"
                   >
@@ -2399,8 +2336,9 @@ const Dashboard = () => {
                           Checkout
                         </button>
                         <button
-                          onClick={() => toggleCustomerDropdown(customer.id)}
+                          onClick={(e) => { anchorMenu(e); toggleCustomerDropdown(customer.id); }}
                           className="bg-gray-600 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm hover:bg-gray-700 flex items-center"
+                          data-testid={`checked-in-actions-${customer.id}`}
                         >
                           <span className="hidden sm:inline">Actions</span>
                           <svg className="w-4 h-4 sm:ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2409,7 +2347,7 @@ const Dashboard = () => {
                         </button>
                       </div>
                       {openCustomerDropdowns[customer.id] && (
-                        <div className="absolute right-0 z-50 mt-2 w-52 bg-gray-700 rounded-md shadow-lg border border-gray-600">
+                        <div className="fixed z-50 w-52 bg-gray-700 rounded-md shadow-lg border border-gray-600" style={menuPos || undefined}>
                           <div className="py-1">
                             <button
                               onClick={async () => {
@@ -3967,7 +3905,7 @@ const Dashboard = () => {
             <h3 className="text-lg font-semibold mb-4 text-white">Checkout Complete!</h3>
             
             <p className="text-gray-300 mb-6">
-              Customer has been successfully checked out. Would you like to print the invoice?
+              Customer has been successfully checked out. Would you like to print the A4 check-out receipt?
             </p>
             
             <div className="flex justify-end space-x-3">
@@ -3980,9 +3918,9 @@ const Dashboard = () => {
               <button
                 onClick={handlePrintInvoice}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                data-testid="print-receipt-after-checkout-btn"
               >
-                <span>🖨️</span>
-                <span>Print Invoice</span>
+                <span>Print Receipt</span>
               </button>
             </div>
           </div>
@@ -6806,6 +6744,7 @@ const Guests = () => {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Amount</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Booked On</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Receipt</th>
                     </tr>
                   </thead>
                   <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -6824,6 +6763,17 @@ const Guests = () => {
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-200">
                           {new Date(booking.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {['Completed', 'Checked In', 'Checked-in'].includes(booking.status) ? (
+                            <button
+                              onClick={() => printReceipt(`/receipts/booking/${booking.id}`)}
+                              className="px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                              data-testid={`guest-history-print-receipt-${booking.id}`}
+                            >
+                              Print Receipt
+                            </button>
+                          ) : <span className="text-xs text-gray-500">—</span>}
                         </td>
                       </tr>
                     ))}
@@ -7250,6 +7200,9 @@ const Bookings = () => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                       Created
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                      Receipt
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -7290,6 +7243,17 @@ const Bookings = () => {
                         <div className="text-sm text-white">
                           {new Date(booking.created_at).toLocaleDateString()}
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {['Completed', 'Checked In', 'Checked-in'].includes(booking.status) ? (
+                          <button
+                            onClick={() => printReceipt(`/receipts/booking/${booking.id}`)}
+                            className="px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                            data-testid={`booking-print-receipt-${booking.id}`}
+                          >
+                            Print Receipt
+                          </button>
+                        ) : <span className="text-xs text-gray-500">—</span>}
                       </td>
                     </tr>
                   ))}
@@ -7964,6 +7928,7 @@ const Navigation = () => {
     { path: '/rooms', label: 'Rooms', pageId: 'rooms' },
     { path: '/guests', label: 'Guests', pageId: 'guests' },
     { path: '/bookings', label: 'Bookings', pageId: 'bookings' },
+    { path: '/guest-feedback', label: 'Feedback', pageId: 'feedback' },
     { path: '/payroll', label: 'Payroll', pageId: 'payroll' },
     { path: '/settings', label: 'Settings', pageId: 'settings' }
   ];
@@ -14960,6 +14925,7 @@ function AppContent() {
             <Route path="/payroll" element={<PageGuard pageId="payroll"><Payroll /></PageGuard>} />
             <Route path="/maintenance" element={<PageGuard pageId="expenses"><Maintenance /></PageGuard>} />
             <Route path="/settings" element={<PageGuard pageId="settings"><Settings /></PageGuard>} />
+            <Route path="/guest-feedback" element={<PageGuard pageId="feedback"><GuestFeedback /></PageGuard>} />
           </Routes>
         </main>
     </div>
@@ -14995,6 +14961,7 @@ function App() {
         <Route path="/refund-policy" element={<Website page="refund" />} />
         <Route path="/privacy-policy" element={<Website page="privacy" />} />
         <Route path="/terms" element={<Website page="terms" />} />
+        <Route path="/feedback/:token" element={<FeedbackPage />} />
         {/* CRM routes (auth-protected) — needed for preview/testing */}
         <Route path="/*" element={
           <FinancialProvider>

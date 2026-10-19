@@ -590,3 +590,40 @@ async def submit_contact_form(req: ContactFormRequest):
     await db.contact_messages.insert_one(contact)
 
     return {"message": "Thank you for your message! We will get back to you shortly."}
+
+# ==================== GUEST FEEDBACK ====================
+
+class FeedbackSubmission(BaseModel):
+    overall_rating: int = Field(..., ge=1, le=5)
+    cleanliness_rating: Optional[int] = Field(None, ge=1, le=5)
+    staff_rating: Optional[int] = Field(None, ge=1, le=5)
+    food_rating: Optional[int] = Field(None, ge=1, le=5)
+    comfort_rating: Optional[int] = Field(None, ge=1, le=5)
+    comment: str = Field("", max_length=2000)
+
+@public_router.get("/feedback/{token}")
+async def get_feedback_request(token: str):
+    fb = await db.feedback_requests.find_one({"token": token}, {"_id": 0})
+    if not fb:
+        raise HTTPException(status_code=404, detail="This feedback link is invalid or has expired.")
+    settings = await db.settings.find_one({}, {"_id": 0}) or {}
+    return {
+        "guest_name": fb.get("guest_name", ""),
+        "room_number": fb.get("room_number", ""),
+        "check_in_date": fb.get("check_in_date", ""),
+        "check_out_date": fb.get("check_out_date", ""),
+        "status": fb.get("status", "pending"),
+        "hotel_name": settings.get("hotel_name", "Kreation Hotels"),
+    }
+
+@public_router.post("/feedback/{token}")
+async def submit_feedback(token: str, req: FeedbackSubmission):
+    fb = await db.feedback_requests.find_one({"token": token})
+    if not fb:
+        raise HTTPException(status_code=404, detail="This feedback link is invalid or has expired.")
+    if fb.get("status") == "submitted":
+        raise HTTPException(status_code=409, detail="Feedback has already been submitted. Thank you!")
+    await db.feedback_requests.update_one({"token": token}, {"$set": {
+        **req.dict(), "comment": req.comment.strip(), "status": "submitted", "submitted_at": datetime.now(timezone.utc),
+    }})
+    return {"message": "Thank you for your feedback!"}

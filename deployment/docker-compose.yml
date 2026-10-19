@@ -33,6 +33,7 @@ services:
         condition: service_healthy
     environment:
       - MONGO_URL=mongodb://mongo:27017
+      - PUBLIC_WEBSITE_URL=${PUBLIC_WEBSITE_URL}
       - DB_NAME=${CRM_DB_NAME:-kreation_db}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - CORS_ORIGINS=${CRM_DOMAIN:-https://app.kreationhotels.com}
