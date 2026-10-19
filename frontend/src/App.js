@@ -11881,7 +11881,9 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   
   // UI state
-  const [activeTab, setActiveTab] = useState('users'); // users, settings, email, sms, templates, channels, system, logs
+  const [activeTab, setActiveTab] = useState('users');
+  const [commSubTab, setCommSubTab] = useState('email');
+  const [channelSubTab, setChannelSubTab] = useState('channels'); // users, settings, email, sms, templates, channels, system, logs
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
   const [showActivityLogs, setShowActivityLogs] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -11977,6 +11979,14 @@ const Settings = () => {
   });
   const [savingChannelApi, setSavingChannelApi] = useState(false);
   
+  // Payment Gateway Settings state
+  const [paymentSettings, setPaymentSettings] = useState({
+    active_gateway: '', payhere_merchant_id: '', payhere_merchant_secret: '', payhere_mode: 'sandbox',
+    paypal_client_id: '', paypal_client_secret: '', paypal_mode: 'sandbox',
+    webxpay_api_key: '', webxpay_secret: '', webxpay_mode: 'sandbox'
+  });
+  const [savingPayment, setSavingPayment] = useState(false);
+  
   // Get current user context
   const { user } = useAuth();
   
@@ -12052,6 +12062,7 @@ const Settings = () => {
         fetchActivityLogs(),
         fetchTaxConfigs(),
         fetchChannelApiSettings(),
+        fetchPaymentSettings(),
         fetchAvailablePages()
       ]);
     } catch (error) {
@@ -12227,6 +12238,28 @@ const Settings = () => {
       setSavingChannelApi(false);
     }
   };
+
+  // Payment Settings Functions
+  const fetchPaymentSettings = async () => {
+    try {
+      const response = await axios.get(`${API}/payment-settings`);
+      setPaymentSettings(response.data);
+    } catch (error) {
+      console.error('Error fetching payment settings:', error);
+    }
+  };
+
+  const handleSavePaymentSettings = async () => {
+    setSavingPayment(true);
+    try {
+      await axios.put(`${API}/payment-settings`, paymentSettings);
+      alert('Payment settings saved successfully!');
+    } catch (error) {
+      alert('Error saving payment settings: ' + (error.response?.data?.detail || error.message));
+    } finally { setSavingPayment(false); }
+  };
+
+
 
   // Tax Configuration Functions
   const fetchTaxConfigs = async () => {
@@ -12579,112 +12612,29 @@ const Settings = () => {
         </div>
       </div>
 
-      {/* Tab Navigation */}
+      {/* Tab Navigation - Reorganized with Groups */}
       <div className="mb-6">
-        <nav className="flex space-x-8">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'users'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            User Management
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'settings'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Hotel Settings
-          </button>
-          <button
-            onClick={() => setActiveTab('email')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'email'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Email Settings
-          </button>
-          <button
-            onClick={() => setActiveTab('sms')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'sms'
-                ? 'border-purple-500 text-purple-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            SMS Settings
-          </button>
-          <button
-            onClick={() => setActiveTab('templates')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'templates'
-                ? 'border-yellow-500 text-yellow-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Templates
-          </button>
-          <button
-            onClick={() => setActiveTab('taxes')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'taxes'
-                ? 'border-orange-500 text-orange-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Taxes & Levies
-          </button>
-          <button
-            onClick={() => setActiveTab('channels')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'channels'
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            📈 Booking Channels
-          </button>
-          <button
-            onClick={() => setActiveTab('channel-api')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'channel-api'
-                ? 'border-cyan-500 text-cyan-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            🔗 Channel API
-          </button>
-          {/* System Management Tab - Only visible to Admin */}
-          {user?.role === 'Admin' && (
-            <button
-              onClick={() => setActiveTab('system')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'system'
-                  ? 'border-red-500 text-red-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+        <nav className="flex flex-wrap gap-1 sm:gap-2">
+          {[
+            { key: 'users', label: 'User Management' },
+            { key: 'settings', label: 'Hotel Settings' },
+            { key: 'communication', label: 'Communication' },
+            { key: 'channels', label: 'Booking Channels' },
+            { key: 'payments', label: 'Payments' },
+            { key: 'taxes', label: 'Taxes & Levies' },
+            { key: 'logs', label: 'Activity Logs' },
+          ].map(tab => (
+            <button key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`py-2 px-3 rounded-md font-medium text-sm transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
               }`}
             >
-              🔧 System Management
+              {tab.label}
             </button>
-          )}
-          <button
-            onClick={() => setActiveTab('logs')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'logs'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Activity Logs
-          </button>
+          ))}
         </nav>
       </div>
 
@@ -12994,7 +12944,18 @@ const Settings = () => {
       )}
 
       {/* Email Settings Tab */}
-      {activeTab === 'email' && (
+      {/* Communication Tab - Email, SMS, Templates */}
+      {activeTab === 'communication' && (
+        <div>
+          <div className="flex space-x-2 mb-6">
+            {[{key:'email',label:'Email Settings'},{key:'sms',label:'SMS Settings'},{key:'templates',label:'Templates'}].map(st => (
+              <button key={st.key} onClick={() => setCommSubTab(st.key)}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${commSubTab === st.key ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                {st.label}
+              </button>
+            ))}
+          </div>
+        {commSubTab === 'email' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-6">
@@ -13226,7 +13187,8 @@ const Settings = () => {
       )}
 
       {/* SMS Settings Tab */}
-      {activeTab === 'sms' && (
+      )}
+      {commSubTab === 'sms' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-6">
@@ -13390,7 +13352,8 @@ const Settings = () => {
       )}
 
       {/* Templates Tab */}
-      {activeTab === 'templates' && (
+      )}
+      {commSubTab === 'templates' && (
         <div className="space-y-6">
           {/* Send Custom Message Section */}
           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg shadow p-6 text-white">
@@ -13955,14 +13918,26 @@ const Settings = () => {
           </div>
         </div>
       )}
+      </div>
+      )}
 
-      {/* Booking Channels Tab */}
+      {/* Booking Channels Tab - combined channels + API */}
       {activeTab === 'channels' && (
+        <div>
+          <div className="flex space-x-2 mb-6">
+            {[{key:'channels',label:'Booking Channels'},{key:'channel-api',label:'Channel API'}].map(st => (
+              <button key={st.key} onClick={() => setChannelSubTab(st.key)}
+                className={`px-4 py-2 rounded text-sm font-medium transition-colors ${channelSubTab === st.key ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                {st.label}
+              </button>
+            ))}
+          </div>
+        {channelSubTab === 'channels' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">📈 Booking Channels Management</h2>
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Booking Channels Management</h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                   Manage all booking sources including OTAs, direct bookings, and corporate channels
                 </p>
@@ -14214,7 +14189,8 @@ const Settings = () => {
       )}
 
       {/* Channel API Settings Tab */}
-      {activeTab === 'channel-api' && (
+      )}
+      {channelSubTab === 'channel-api' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <div className="mb-6">
@@ -14417,21 +14393,108 @@ const Settings = () => {
           </div>
         </div>
       )}
+      </div>
+      )}
 
-      {/* System Management Tab - Admin Only */}
-      {activeTab === 'system' && user?.role === 'Admin' && (
+      {/* Payments Tab */}
+      {activeTab === 'payments' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">🔧 System Management</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Dangerous operations - Admin only
-                </p>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">Payment Gateway Settings</h2>
+            <p className="text-sm text-gray-400 mb-6">Configure payment gateways for website bookings. Changes apply immediately to the booking website.</p>
+            
+            {/* Active Gateway Selector */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Active Payment Gateway</label>
+              <select value={paymentSettings.active_gateway} onChange={e => setPaymentSettings({...paymentSettings, active_gateway: e.target.value})}
+                className="w-full sm:w-64 px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm">
+                <option value="">None (disabled)</option>
+                <option value="payhere">PayHere (Sri Lanka)</option>
+                <option value="paypal">PayPal (International)</option>
+                <option value="webxpay">WebXPay</option>
+              </select>
+            </div>
+
+            {/* PayHere Settings */}
+            <div className={`border rounded-lg p-5 mb-4 ${paymentSettings.active_gateway === 'payhere' ? 'border-blue-500 bg-blue-900/10' : 'border-gray-700'}`}>
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">PayHere
+                {paymentSettings.active_gateway === 'payhere' && <span className="bg-green-600 text-white text-xs px-2 py-0.5 rounded-full">Active</span>}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Merchant ID</label>
+                  <input type="text" value={paymentSettings.payhere_merchant_id} onChange={e => setPaymentSettings({...paymentSettings, payhere_merchant_id: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" placeholder="Enter PayHere Merchant ID" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Merchant Secret</label>
+                  <input type="password" value={paymentSettings.payhere_merchant_secret} onChange={e => setPaymentSettings({...paymentSettings, payhere_merchant_secret: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" placeholder="Enter PayHere Merchant Secret" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Mode</label>
+                  <select value={paymentSettings.payhere_mode} onChange={e => setPaymentSettings({...paymentSettings, payhere_mode: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm">
+                    <option value="sandbox">Sandbox (Testing)</option>
+                    <option value="live">Live (Production)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-6">
+            {/* PayPal Settings */}
+            <div className={`border rounded-lg p-5 mb-4 ${paymentSettings.active_gateway === 'paypal' ? 'border-blue-500 bg-blue-900/10' : 'border-gray-700'}`}>
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">PayPal
+                {paymentSettings.active_gateway === 'paypal' && <span className="bg-green-600 text-white text-xs px-2 py-0.5 rounded-full">Active</span>}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Client ID</label>
+                  <input type="text" value={paymentSettings.paypal_client_id} onChange={e => setPaymentSettings({...paymentSettings, paypal_client_id: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" placeholder="Enter PayPal Client ID" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Client Secret</label>
+                  <input type="password" value={paymentSettings.paypal_client_secret} onChange={e => setPaymentSettings({...paymentSettings, paypal_client_secret: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" placeholder="Enter PayPal Client Secret" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Mode</label>
+                  <select value={paymentSettings.paypal_mode} onChange={e => setPaymentSettings({...paymentSettings, paypal_mode: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm">
+                    <option value="sandbox">Sandbox</option>
+                    <option value="live">Live</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* WebXPay Settings */}
+            <div className={`border rounded-lg p-5 mb-4 ${paymentSettings.active_gateway === 'webxpay' ? 'border-blue-500 bg-blue-900/10' : 'border-gray-700'}`}>
+              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">WebXPay
+                {paymentSettings.active_gateway === 'webxpay' && <span className="bg-green-600 text-white text-xs px-2 py-0.5 rounded-full">Active</span>}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">API Key</label>
+                  <input type="text" value={paymentSettings.webxpay_api_key} onChange={e => setPaymentSettings({...paymentSettings, webxpay_api_key: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" placeholder="Enter WebXPay API Key" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Secret</label>
+                  <input type="password" value={paymentSettings.webxpay_secret} onChange={e => setPaymentSettings({...paymentSettings, webxpay_secret: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm" placeholder="Enter WebXPay Secret" />
+                </div>
+              </div>
+            </div>
+
+            <button onClick={handleSavePaymentSettings} disabled={savingPayment}
+              className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+              {savingPayment ? 'Saving...' : 'Save Payment Settings'}
+            </button>
+          </div>
+        </div>
+      )}
               {/* Payroll Settings Section */}
               <div className="border border-emerald-200 dark:border-emerald-800 rounded-lg p-6 bg-emerald-50 dark:bg-emerald-900/20">
                 <div className="flex items-start space-x-4">
@@ -14458,102 +14521,6 @@ const Settings = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Complete Database Reset Section */}
-              <div className="border border-red-200 dark:border-red-800 rounded-lg p-6 bg-red-50 dark:bg-red-900/20">
-                <div className="flex items-start space-x-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-red-100 dark:bg-red-800 rounded-full flex items-center justify-center">
-                      <span className="text-red-600 dark:text-red-400 text-lg">⚠️</span>
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-lg font-medium text-red-800 dark:text-red-200 mb-2">
-                      Complete Database Reset
-                    </h3>
-                    <p className="text-sm text-red-700 dark:text-red-300 mb-4">
-                      This will permanently delete ALL data from the system including rooms, bookings, 
-                      guests, financial records, and all users except the admin account. 
-                      Only hotel name and admin account will be preserved.
-                    </p>
-                    
-                    <div className="bg-red-100 dark:bg-red-800/50 rounded-lg p-4 mb-4">
-                      <h4 className="font-medium text-red-800 dark:text-red-200 mb-2">
-                        ⚡ What will be deleted:
-                      </h4>
-                      <ul className="text-sm text-red-700 dark:text-red-300 space-y-1">
-                        <li>• All rooms and room configurations</li>
-                        <li>• All bookings and reservations</li>
-                        <li>• All guest information and history</li>
-                        <li>• All financial data (expenses, income, daily sales)</li>
-                        <li>• All user accounts except admin</li>
-                        <li>• All activity logs and system history</li>
-                        <li>• All email configurations</li>
-                      </ul>
-                    </div>
-
-                    <div className="bg-green-100 dark:bg-green-800/50 rounded-lg p-4 mb-4">
-                      <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">
-                        ✅ What will be preserved:
-                      </h4>
-                      <ul className="text-sm text-green-700 dark:text-green-300 space-y-1">
-                        <li>• Hotel name and basic settings</li>
-                        <li>• Admin user account (you)</li>
-                        <li>• System setup status</li>
-                      </ul>
-                    </div>
-                    
-                    <button
-                      onClick={handleCompleteReset}
-                      disabled={resetting}
-                      className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
-                    >
-                      {resetting ? (
-                        <span className="flex items-center">
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Resetting System...
-                        </span>
-                      ) : (
-                        '🔥 COMPLETE RESET - DELETE ALL DATA'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* System Information Section */}
-              <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-6 bg-blue-50 dark:bg-blue-900/20">
-                <h3 className="text-lg font-medium text-blue-800 dark:text-blue-200 mb-4">
-                  💡 System Information
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="font-medium text-blue-700 dark:text-blue-300">Current User:</span>
-                    <span className="ml-2 text-blue-600 dark:text-blue-400">{user?.full_name} ({user?.username})</span>
-                  </div>
-                  <div>
-                    <span className="font-medium text-blue-700 dark:text-blue-300">Role:</span>
-                    <span className="ml-2 text-blue-600 dark:text-blue-400">{user?.role}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium text-blue-700 dark:text-blue-300">System Version:</span>
-                    <span className="ml-2 text-blue-600 dark:text-blue-400">Hotel Management v2.0</span>
-                  </div>
-                  <div>
-                    <span className="font-medium text-blue-700 dark:text-blue-300">Last Login:</span>
-                    <span className="ml-2 text-blue-600 dark:text-blue-400">
-                      {user?.last_login ? new Date(user.last_login).toLocaleString() : 'N/A'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Activity Logs Tab */}
       {activeTab === 'logs' && (

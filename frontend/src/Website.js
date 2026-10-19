@@ -167,7 +167,7 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
   const [holdData, setHoldData] = useState(null);
   const [countdown, setCountdown] = useState(0);
   const timerRef = useRef(null);
-  const [guest, setGuest] = useState({ name: "", email: "", phone: "", country: "Sri Lanka", num_guests: 1, special_requests: "", payment_option: "full" });
+  const [guest, setGuest] = useState({ name: "", email: "", phone: "", country: "Sri Lanka", num_guests: 1, num_rooms: 1, special_requests: "" });
 
   // Fetch availability on open
   useEffect(() => {
@@ -201,7 +201,7 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
       const r = await axios.post(`${API}/public/booking/hold`, {
         room_type: selectedType, check_in: checkIn, check_out: checkOut,
         guest_name: guest.name, guest_email: guest.email, guest_phone: guest.phone,
-        country: guest.country, num_guests: guest.num_guests, special_requests: guest.special_requests, payment_option: guest.payment_option,
+        country: guest.country, num_guests: guest.num_guests, num_rooms: guest.num_rooms, special_requests: guest.special_requests,
       });
       setHoldData(r.data); setCountdown(r.data.expires_in_seconds || 300); setStep(3);
     } catch (e) { setError(e.response?.data?.detail || "Room may have just been booked. Try again."); }
@@ -292,28 +292,20 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
                   <label className="block text-gray-600 text-xs uppercase tracking-wider font-semibold mb-1">Guests</label>
                   <select value={guest.num_guests} onChange={e => setGuest({ ...guest, num_guests: parseInt(e.target.value) })}
                     className="w-full border border-gray-300 rounded px-4 py-2.5 text-sm focus:border-[#1a1464] focus:outline-none bg-white">
-                    {[1,2,3,4].map(n => <option key={n} value={n}>{n} Guest{n > 1 ? "s" : ""}</option>)}
+                    {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} Guest{n > 1 ? "s" : ""}</option>)}
                   </select>
                 </div>
-                <div className="sm:col-span-2">
+                <div>
+                  <label className="block text-gray-600 text-xs uppercase tracking-wider font-semibold mb-1">Number of Rooms</label>
+                  <select value={guest.num_rooms} onChange={e => setGuest({ ...guest, num_rooms: parseInt(e.target.value) })}
+                    className="w-full border border-gray-300 rounded px-4 py-2.5 text-sm focus:border-[#1a1464] focus:outline-none bg-white" data-testid="guest-num-rooms">
+                    {[1,2,3,4,5].map(n => <option key={n} value={n}>{n} Room{n > 1 ? "s" : ""}</option>)}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-gray-600 text-xs uppercase tracking-wider font-semibold mb-1">Special Requests</label>
                   <textarea value={guest.special_requests} onChange={e => setGuest({ ...guest, special_requests: e.target.value })} rows={2} placeholder="Any special requirements..."
                     className="w-full border border-gray-300 rounded px-4 py-2.5 text-sm focus:border-[#1a1464] focus:outline-none resize-none" />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-gray-600 text-xs uppercase tracking-wider font-semibold mb-2">Payment Option</label>
-                  <div className="flex gap-4">
-                    <label className={`flex-1 border-2 rounded-lg p-4 cursor-pointer transition-all ${guest.payment_option === "full" ? "border-[#1a1464] bg-[#1a1464]/5" : "border-gray-200 hover:border-gray-300"}`}>
-                      <input type="radio" name="payment" value="full" checked={guest.payment_option === "full"} onChange={() => setGuest({ ...guest, payment_option: "full" })} className="sr-only" />
-                      <p className="text-[#1a1464] font-semibold text-sm">Full Payment (100%)</p>
-                      <p className="text-gray-500 text-xs mt-1">Pay the full amount now</p>
-                    </label>
-                    <label className={`flex-1 border-2 rounded-lg p-4 cursor-pointer transition-all ${guest.payment_option === "advance" ? "border-[#1a1464] bg-[#1a1464]/5" : "border-gray-200 hover:border-gray-300"}`}>
-                      <input type="radio" name="payment" value="advance" checked={guest.payment_option === "advance"} onChange={() => setGuest({ ...guest, payment_option: "advance" })} className="sr-only" />
-                      <p className="text-[#1a1464] font-semibold text-sm">Advance (30%)</p>
-                      <p className="text-gray-500 text-xs mt-1">Pay 30% now, rest at check-in</p>
-                    </label>
-                  </div>
                 </div>
               </div>
               <button onClick={holdRoom} disabled={loading} data-testid="proceed-payment-btn"
@@ -332,11 +324,16 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
               </div>
               <h4 className="text-[#1a1464] ws-serif text-xl mb-4">Booking Summary</h4>
               <div className="max-w-sm mx-auto text-left space-y-2 mb-6">
-                {[["Room", `${holdData.room_type} (#${holdData.room_number})`], ["Check-in", holdData.check_in], ["Check-out", holdData.check_out], ["Nights", holdData.nights]].map(([k, v]) => (
-                  <div key={k} className="flex justify-between text-sm"><span className="text-gray-500">{k}</span><span className="text-gray-800 font-medium">{v}</span></div>
-                ))}
-                <div className="flex justify-between text-sm"><span className="text-gray-500">Total Amount</span><span className="text-gray-800">{formatLKR(holdData.total_amount)}</span></div>
-                <div className="flex justify-between text-sm border-t pt-2 mt-2"><span className="text-[#e41e2e] font-bold">Pay Now</span><span className="text-[#e41e2e] font-bold text-lg">{formatLKR(holdData.payment_amount)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">Room Type</span><span className="text-gray-800 font-medium">{holdData.room_type}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">Rooms</span><span className="text-gray-800 font-medium">{holdData.num_rooms || 1} &mdash; {(holdData.room_numbers || [holdData.room_number]).join(", ")}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">Check-in</span><span className="text-gray-800 font-medium">{holdData.check_in}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">Check-out</span><span className="text-gray-800 font-medium">{holdData.check_out}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">Nights</span><span className="text-gray-800 font-medium">{holdData.nights}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">Subtotal</span><span className="text-gray-800">{formatLKR(holdData.subtotal || holdData.total_amount)}</span></div>
+                {holdData.tax_amount > 0 && (
+                  <div className="flex justify-between text-sm"><span className="text-gray-500">Tax ({holdData.tax_rate}%)</span><span className="text-gray-800">{formatLKR(holdData.tax_amount)}</span></div>
+                )}
+                <div className="flex justify-between text-sm border-t pt-2 mt-2"><span className="text-[#e41e2e] font-bold">Total to Pay</span><span className="text-[#e41e2e] font-bold text-lg">{formatLKR(holdData.payment_amount)}</span></div>
               </div>
               <button onClick={initiatePayHere} data-testid="pay-now-btn"
                 className="bg-[#e41e2e] hover:bg-[#c91826] text-white font-bold px-12 py-3 rounded uppercase tracking-widest text-sm transition-colors">

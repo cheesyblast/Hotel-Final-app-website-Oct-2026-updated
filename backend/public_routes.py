@@ -37,8 +37,8 @@ class BookingHoldRequest(BaseModel):
     guest_phone: str
     country: str = "Sri Lanka"
     num_guests: int = 1
+    num_rooms: int = 1
     special_requests: str = ""
-    payment_option: str = "full"  # "full" or "advance" (30%)
 
 class ContactFormRequest(BaseModel):
     name: str
@@ -62,14 +62,21 @@ async def get_held_rooms_for_dates(check_in_dt, check_out_dt):
     """Get room numbers currently held for overlapping dates"""
     await cleanup_expired_holds()
     now = datetime.now(timezone.utc)
-    # Holds store dates as datetime objects
     holds = await db.booking_holds.find({
         "status": "held",
         "expires_at": {"$gt": now},
         "check_in": {"$lt": check_out_dt},
         "check_out": {"$gt": check_in_dt}
     }).to_list(100)
-    return [h.get("room_number") for h in holds]
+    rooms = []
+    for h in holds:
+        # Multi-room holds store room_numbers array
+        rns = h.get("room_numbers", [])
+        if rns:
+            rooms.extend(rns)
+        elif h.get("room_number"):
+            rooms.append(h["room_number"])
+    return rooms
 
 async def get_booked_rooms_for_dates(check_in_dt, check_out_dt):
     """Get room numbers with confirmed bookings for overlapping dates.
@@ -214,7 +221,7 @@ async def check_availability(check_in: str, check_out: str):
 
 @public_router.post("/booking/hold")
 async def hold_room(req: BookingHoldRequest):
-    """Hold a room for 5 minutes while guest completes payment"""
+    """Hold room(s) for 5 minutes while guest completes payment. Supports multi-room."""
     await cleanup_expired_holds()
 
     try:
@@ -226,39 +233,42 @@ async def hold_room(req: BookingHoldRequest):
     nights = (co - ci).days
     if nights < 1:
         raise HTTPException(status_code=400, detail="Minimum 1 night stay required")
+    if req.num_rooms < 1:
+        raise HTTPException(status_code=400, detail="At least 1 room required")
 
-    # Find an available room of the requested type
+    # Find available rooms of the requested type
     all_rooms = await db.rooms.find({"room_type": req.room_type}, {"_id": 0}).to_list(100)
     booked = await get_booked_rooms_for_dates(ci, co)
     held = await get_held_rooms_for_dates(ci, co)
     unavailable = set(booked + held)
 
-    available_room = None
-    for room in all_rooms:
-        if room.get("room_number") not in unavailable:
-            available_room = room
-            break
+    available_rooms = [r for r in all_rooms if r.get("room_number") not in unavailable]
+    if len(available_rooms) < req.num_rooms:
+        raise HTTPException(status_code=409, detail=f"Only {len(available_rooms)} room(s) available. You requested {req.num_rooms}.")
 
-    if not available_room:
-        raise HTTPException(status_code=409, detail="No rooms available for the selected dates and type. Please try different dates.")
+    selected_rooms = available_rooms[:req.num_rooms]
+    price_per_night = selected_rooms[0].get("price_per_night", 0)
+    subtotal = price_per_night * nights * req.num_rooms
 
-    price_per_night = available_room.get("price_per_night", 0)
-    total_amount = price_per_night * nights
-
-    if req.payment_option == "advance":
-        payment_amount = round(total_amount * 0.30, 2)
-    else:
-        payment_amount = total_amount
+    # Apply tax from CRM settings
+    hotel_settings = await db.settings.find_one({}, {"_id": 0})
+    tax_rate = float((hotel_settings or {}).get("tax_rate", 0))
+    tax_amount = round(subtotal * tax_rate / 100, 2) if tax_rate > 0 else 0
+    total_amount = subtotal + tax_amount
+    payment_amount = total_amount  # Full payment only
 
     hold_id = str(uuid.uuid4())
     order_id = f"WEB-{hold_id[:8].upper()}"
     now = datetime.now(timezone.utc)
+    room_numbers = [r["room_number"] for r in selected_rooms]
 
     hold_record = {
         "id": hold_id,
         "order_id": order_id,
-        "room_number": available_room["room_number"],
+        "room_numbers": room_numbers,
+        "room_number": room_numbers[0],  # primary room for backward compat
         "room_type": req.room_type,
+        "num_rooms": req.num_rooms,
         "check_in": ci,
         "check_out": co,
         "nights": nights,
@@ -269,9 +279,11 @@ async def hold_room(req: BookingHoldRequest):
         "num_guests": req.num_guests,
         "special_requests": req.special_requests,
         "price_per_night": price_per_night,
+        "subtotal": subtotal,
+        "tax_rate": tax_rate,
+        "tax_amount": tax_amount,
         "total_amount": total_amount,
         "payment_amount": payment_amount,
-        "payment_option": req.payment_option,
         "status": "held",
         "created_at": now,
         "expires_at": now + timedelta(minutes=HOLD_DURATION_MINUTES),
@@ -279,9 +291,11 @@ async def hold_room(req: BookingHoldRequest):
 
     await db.booking_holds.insert_one(hold_record)
 
-    # Generate PayHere hash
-    merchant_id = os.environ.get("PAYHERE_MERCHANT_ID", "")
-    merchant_secret = os.environ.get("PAYHERE_MERCHANT_SECRET", "")
+    # Get PayHere credentials from DB (CRM settings) first, fallback to env
+    pay_settings = await db.payment_settings.find_one({}, {"_id": 0})
+    merchant_id = (pay_settings or {}).get("payhere_merchant_id") or os.environ.get("PAYHERE_MERCHANT_ID", "")
+    merchant_secret = (pay_settings or {}).get("payhere_merchant_secret") or os.environ.get("PAYHERE_MERCHANT_SECRET", "")
+    payhere_mode = (pay_settings or {}).get("payhere_mode", "sandbox")
     currency = "LKR"
 
     pay_hash = ""
@@ -291,15 +305,18 @@ async def hold_room(req: BookingHoldRequest):
     return {
         "hold_id": hold_id,
         "order_id": order_id,
-        "room_number": available_room["room_number"],
+        "room_numbers": room_numbers,
         "room_type": req.room_type,
+        "num_rooms": req.num_rooms,
         "check_in": req.check_in,
         "check_out": req.check_out,
         "nights": nights,
         "price_per_night": price_per_night,
+        "subtotal": subtotal,
+        "tax_rate": tax_rate,
+        "tax_amount": tax_amount,
         "total_amount": total_amount,
         "payment_amount": payment_amount,
-        "payment_option": req.payment_option,
         "expires_in_seconds": HOLD_DURATION_MINUTES * 60,
         "payhere": {
             "merchant_id": merchant_id,
@@ -307,7 +324,7 @@ async def hold_room(req: BookingHoldRequest):
             "amount": f"{payment_amount:.2f}",
             "currency": currency,
             "hash": pay_hash,
-            "sandbox": "sandbox" in os.environ.get("PAYHERE_BASE_URL", "sandbox"),
+            "sandbox": payhere_mode == "sandbox",
         }
     }
 
@@ -323,8 +340,9 @@ async def payhere_payment_notify(request: Request):
     status_code = form_data.get("status_code", "")
     md5sig = form_data.get("md5sig", "")
 
-    # Verify hash
-    merchant_secret = os.environ.get("PAYHERE_MERCHANT_SECRET", "")
+    # Verify hash using DB credentials first, fallback to env
+    pay_settings = await db.payment_settings.find_one({}, {"_id": 0})
+    merchant_secret = (pay_settings or {}).get("payhere_merchant_secret") or os.environ.get("PAYHERE_MERCHANT_SECRET", "")
     local_secret_hash = hashlib.md5(merchant_secret.encode()).hexdigest().upper()
     local_sig = hashlib.md5(
         (merchant_id + order_id + payhere_amount + payhere_currency + str(status_code) + local_secret_hash).encode()
@@ -345,49 +363,58 @@ async def payhere_payment_notify(request: Request):
         if hold.get("status") == "confirmed":
             return {"status": "already_confirmed", "booking_id": hold.get("booking_id", "")}
 
-        # Create actual booking in the CRM
-        booking_id = str(uuid.uuid4())
-        # Store dates as YYYY-MM-DD strings to match CRM format
+        # Create actual booking(s) in the CRM — one per room
         ci_raw = hold.get("check_in")
         co_raw = hold.get("check_out")
         ci_str = ci_raw.strftime("%Y-%m-%d") if isinstance(ci_raw, datetime) else str(ci_raw)[:10]
         co_str = co_raw.strftime("%Y-%m-%d") if isinstance(co_raw, datetime) else str(co_raw)[:10]
-        booking = {
-            "id": booking_id,
-            "guest_name": hold.get("guest_name", ""),
-            "guest_email": hold.get("guest_email", ""),
-            "guest_phone": hold.get("guest_phone", ""),
-            "country": hold.get("country", "Sri Lanka"),
-            "id_passport": "",
-            "room_number": hold.get("room_number", ""),
-            "room_type": hold.get("room_type", ""),
-            "check_in_date": ci_str,
-            "check_out_date": co_str,
-            "num_guests": hold.get("num_guests", 1),
-            "stay_type": "Full Day",
-            "booking_amount": hold.get("total_amount", 0),
-            "advance_amount": hold.get("payment_amount", 0),
-            "payment_method": "Online Payment",
-            "status": "Confirmed",
-            "special_requests": hold.get("special_requests", ""),
-            "booking_source": "Website",
-            "booking_channel_name": "Website",
-            "created_at": datetime.now(timezone.utc),
-            "guest_id_proof": "",
-            "guest_id_proof_name": "",
-        }
-        await db.bookings.insert_one(booking)
 
-        # Also add guest to customers collection
+        room_numbers = hold.get("room_numbers", [hold.get("room_number", "")])
+        num_rooms = len(room_numbers)
+        per_room_amount = round(hold.get("total_amount", 0) / max(num_rooms, 1), 2)
+        per_room_payment = round(hold.get("payment_amount", 0) / max(num_rooms, 1), 2)
+        booking_ids = []
+
+        for rn in room_numbers:
+            booking_id = str(uuid.uuid4())
+            booking_ids.append(booking_id)
+            booking = {
+                "id": booking_id,
+                "guest_name": hold.get("guest_name", ""),
+                "guest_email": hold.get("guest_email", ""),
+                "guest_phone": hold.get("guest_phone", ""),
+                "country": hold.get("country", "Sri Lanka"),
+                "id_passport": "",
+                "room_number": rn,
+                "room_type": hold.get("room_type", ""),
+                "check_in_date": ci_str,
+                "check_out_date": co_str,
+                "num_guests": hold.get("num_guests", 1),
+                "stay_type": "Full Day",
+                "booking_amount": per_room_amount,
+                "advance_amount": per_room_payment,
+                "payment_method": "Online Payment",
+                "status": "Confirmed",
+                "special_requests": hold.get("special_requests", ""),
+                "booking_source": "Website",
+                "booking_channel_name": "Website",
+                "created_at": datetime.now(timezone.utc),
+                "guest_id_proof": "",
+                "guest_id_proof_name": "",
+                "group_order_id": hold.get("order_id", ""),
+            }
+            await db.bookings.insert_one(booking)
+
+        # Add guest to customers collection
         customer = {
             "id": str(uuid.uuid4()),
             "name": hold.get("guest_name", ""),
             "email": hold.get("guest_email", ""),
             "phone": hold.get("guest_phone", ""),
             "country": hold.get("country", ""),
-            "room_number": hold.get("room_number", ""),
-            "check_in_date": hold.get("check_in"),
-            "check_out_date": hold.get("check_out"),
+            "room_number": ", ".join(room_numbers),
+            "check_in_date": ci_str,
+            "check_out_date": co_str,
             "room_charges": hold.get("total_amount", 0),
             "advance_amount": hold.get("payment_amount", 0),
             "total_amount": hold.get("total_amount", 0),
@@ -395,38 +422,37 @@ async def payhere_payment_notify(request: Request):
         }
         await db.customers.insert_one(customer)
 
-        # Record advance payment in daily_sales
+        # Record payment in daily_sales
         if hold.get("payment_amount", 0) > 0:
             sale_record = {
                 "id": str(uuid.uuid4()),
                 "date": datetime.combine(datetime.now().date(), datetime.min.time()),
                 "customer_name": hold.get("guest_name", ""),
-                "room_number": hold.get("room_number", ""),
+                "room_number": ", ".join(room_numbers),
                 "room_charges": hold.get("total_amount", 0),
                 "additional_charges": 0,
                 "discount_amount": 0,
                 "advance_amount": hold.get("payment_amount", 0),
                 "total_amount": hold.get("payment_amount", 0),
                 "payment_method": "Online Payment",
-                "sale_type": "website_booking_advance",
+                "sale_type": "website_booking",
                 "created_at": datetime.now(timezone.utc),
             }
             await db.daily_sales.insert_one(sale_record)
 
         # Mark hold as confirmed
+        primary_booking_id = booking_ids[0] if booking_ids else ""
         await db.booking_holds.update_one(
             {"order_id": order_id},
-            {"$set": {"status": "confirmed", "payment_id": payment_id, "confirmed_at": datetime.now(timezone.utc)}}
+            {"$set": {"status": "confirmed", "payment_id": payment_id, "confirmed_at": datetime.now(timezone.utc), "booking_id": primary_booking_id}}
         )
 
-        # TODO: Send SMS and Email confirmations using CRM settings
-        # (notify.lk and Brevo - will use same config from CRM settings)
         try:
-            await send_booking_confirmations(hold, booking_id)
+            await send_booking_confirmations(hold, primary_booking_id)
         except Exception as e:
             print(f"Failed to send confirmations: {e}")
 
-        return {"status": "confirmed", "booking_id": booking_id}
+        return {"status": "confirmed", "booking_id": primary_booking_id}
     else:
         # Payment failed or pending - release hold
         await db.booking_holds.update_one(

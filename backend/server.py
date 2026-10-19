@@ -722,6 +722,34 @@ class ChannelApiSettingsUpdate(BaseModel):
     agoda_property_id: Optional[str] = None
     agoda_enabled: Optional[bool] = None
 
+
+# ==================== PAYMENT GATEWAY SETTINGS ====================
+
+class PaymentSettings(BaseModel):
+    active_gateway: str = ""  # payhere, paypal, webxpay
+    payhere_merchant_id: str = ""
+    payhere_merchant_secret: str = ""
+    payhere_mode: str = "sandbox"  # sandbox or live
+    paypal_client_id: str = ""
+    paypal_client_secret: str = ""
+    paypal_mode: str = "sandbox"
+    webxpay_api_key: str = ""
+    webxpay_secret: str = ""
+    webxpay_mode: str = "sandbox"
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class PaymentSettingsUpdate(BaseModel):
+    active_gateway: Optional[str] = None
+    payhere_merchant_id: Optional[str] = None
+    payhere_merchant_secret: Optional[str] = None
+    payhere_mode: Optional[str] = None
+    paypal_client_id: Optional[str] = None
+    paypal_client_secret: Optional[str] = None
+    paypal_mode: Optional[str] = None
+    webxpay_api_key: Optional[str] = None
+    webxpay_secret: Optional[str] = None
+    webxpay_mode: Optional[str] = None
+
 # ==================== MAINTENANCE TRACKING ====================
 
 class MaintenanceItem(BaseModel):
@@ -1138,22 +1166,31 @@ async def send_sms_notify_lk(settings: dict, phone_number: str, message: str):
     import httpx
     
     try:
+        # Format phone number: remove spaces/dashes, convert local to international
+        phone = phone_number.strip().replace(" ", "").replace("-", "")
+        if phone.startswith("+94"):
+            phone = phone[1:]  # Remove + → 94...
+        elif phone.startswith("0"):
+            phone = "94" + phone[1:]  # 077... → 9477...
+        elif not phone.startswith("94"):
+            phone = "94" + phone
+        
         url = "https://app.notify.lk/api/v1/send"
         payload = {
             "user_id": settings.get("notify_lk_user_id"),
             "api_key": settings.get("notify_lk_api_key"),
             "sender_id": settings.get("notify_lk_sender_id"),
-            "to": phone_number,
+            "to": phone,
             "message": message
         }
         
         async with httpx.AsyncClient() as client:
             response = await client.post(url, data=payload, timeout=30.0)
-            result = response.json()
-            if result.get("status") == "success":
+            print(f"Notify.lk response: {response.status_code} - {response.text}")
+            if response.status_code == 200:
                 return True
             else:
-                print(f"Notify.lk Error: {result}")
+                print(f"Notify.lk Error: {response.text}")
                 return False
     except Exception as e:
         print(f"Notify.lk Error: {str(e)}")
@@ -2061,6 +2098,8 @@ async def get_email_settings_api(current_user: UserResponse = Depends(get_curren
         settings_dict["sendgrid_api_key"] = "***"
     if settings_dict.get("aws_secret_key"):
         settings_dict["aws_secret_key"] = "***"
+    if settings_dict.get("brevo_api_key"):
+        settings_dict["brevo_api_key_display"] = settings_dict["brevo_api_key"][:12] + "***"
     
     return settings_dict
 
@@ -2098,6 +2137,11 @@ async def update_email_settings(
             update_data.get("aws_secret_key") or current_settings.aws_secret_key,
             update_data.get("from_email") or current_settings.from_email
         ])
+    elif settings_update.provider == "brevo":
+        is_configured = all([
+            update_data.get("brevo_api_key") or current_settings.brevo_api_key,
+            update_data.get("from_email") or current_settings.from_email
+        ])
     else:
         is_configured = current_settings.is_configured
     
@@ -2122,71 +2166,6 @@ async def update_email_settings(
     )
     
     return {"message": "Email settings updated successfully"}
-
-@api_router.post("/admin/complete-reset")
-async def complete_database_reset(current_user: UserResponse = Depends(get_current_active_admin)):
-    """Complete database reset - Admin only (DANGEROUS OPERATION)"""
-    try:
-        # Get all collection names in the database
-        collection_names = await db.list_collection_names()
-        
-        # Collections to clear (all except setup_wizard)
-        collections_to_clear = [
-            'rooms', 'bookings', 'customers', 'expenses', 'incomes', 
-            'activity_logs', 'daily_sales', 'email_settings', 'booking_channels'
-        ]
-        
-        reset_results = {}
-        
-        # Clear specified collections completely
-        for collection_name in collections_to_clear:
-            if collection_name in collection_names:
-                result = await db[collection_name].delete_many({})
-                reset_results[collection_name] = result.deleted_count
-            else:
-                reset_results[collection_name] = 0
-        
-        # Clear users except current admin
-        if 'users' in collection_names:
-            users_result = await db.users.delete_many({"username": {"$ne": "admin"}})
-            reset_results['users_except_admin'] = users_result.deleted_count
-        else:
-            reset_results['users_except_admin'] = 0
-        
-        # Reset hotel settings to default but keep hotel name
-        current_settings = await db.settings.find_one()
-        hotel_name = current_settings.get('hotel_name', 'Hotel Management System') if current_settings else 'Hotel Management System'
-        
-        await db.settings.delete_many({})
-        default_settings = Settings(hotel_name=hotel_name)
-        await db.settings.insert_one(default_settings.dict())
-        reset_results['settings_reset'] = True
-        
-        # Reset setup_wizard to require re-initialization including balances
-        await db.setup_wizard.delete_many({})
-        reset_results['setup_wizard_reset'] = True
-        
-        # Log the reset activity
-        await log_activity(
-            action="complete_system_reset",
-            description=f"Complete system reset performed by admin {current_user.username}",
-            user_name=current_user.username,
-            entity_type="system",
-            details=reset_results
-        )
-        
-        return {
-            "message": "Complete system reset successful",
-            "reset_summary": reset_results,
-            "note": "Hotel settings preserved, admin account preserved. Setup wizard reset - you will need to reconfigure hotel including initial cash and bank balances.",
-            "requires_setup": True
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Reset failed: {str(e)}"
-        )
 
 # Booking Channels Management Routes  
 @api_router.get("/booking-channels", response_model=List[BookingChannel])
@@ -7008,6 +6987,40 @@ async def init_default_sms_templates():
             created += 1
     
     return {"message": f"Created {created} default SMS templates"}
+
+
+# ==================== PAYMENT GATEWAY SETTINGS ENDPOINTS ====================
+
+@api_router.get("/payment-settings")
+async def get_payment_settings(current_user: UserResponse = Depends(get_current_active_admin)):
+    """Get payment gateway settings"""
+    settings = await db.payment_settings.find_one({}, {"_id": 0})
+    if not settings:
+        return PaymentSettings().dict()
+    return settings
+
+@api_router.put("/payment-settings")
+async def update_payment_settings(settings: PaymentSettingsUpdate, current_user: UserResponse = Depends(get_current_active_admin)):
+    """Update payment gateway settings — also updates website backend dynamically"""
+    update_data = {k: v for k, v in settings.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.utcnow()
+    
+    existing = await db.payment_settings.find_one()
+    if existing:
+        await db.payment_settings.update_one({}, {"$set": update_data})
+    else:
+        new_settings = PaymentSettings(**update_data)
+        await db.payment_settings.insert_one(new_settings.dict())
+    
+    await log_activity(
+        action="payment_settings_updated",
+        description=f"Payment settings updated by {current_user.username}",
+        user_name=current_user.username,
+        entity_type="settings"
+    )
+    
+    return {"message": "Payment settings updated successfully"}
+
 
 # ==================== CHANNEL API SETTINGS ENDPOINTS ====================
 
