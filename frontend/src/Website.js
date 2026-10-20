@@ -37,20 +37,6 @@ const useSiteLink = () => {
 };
 const scrollTo = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
 
-// Fire GA4 / GTM / Meta purchase once PayHere has confirmed the order (notify may lag the redirect)
-const trackConfirmedPurchase = async (order, attempt = 0) => {
-  try {
-    const { data } = await axios.get(`${API}/public/booking/status/${order}`);
-    if (data.status === "confirmed") {
-      const value = Number(data.paid_amount ?? data.payment_amount ?? 0);
-      if (value > 0) trackPurchase({ transaction_id: data.order_id, value, currency: "LKR", item_name: data.room_type });
-      return;
-    }
-    if (data.status !== "held") return; // payment_failed / expired / cancelled: never report revenue
-  } catch (e) { if (e.response?.status === 404) return; }
-  if (attempt < 20) setTimeout(() => trackConfirmedPurchase(order, attempt + 1), 3000);
-};
-
 /* ──────── BRAND COLORS ──────── */
 // Navy: #1a1464   Red: #e41e2e   White: #ffffff
 // Fonts: Playfair Display (serif headings), DM Sans (body)
@@ -189,8 +175,83 @@ const Hero = ({ onSearch, loading }) => {
 };
 
 /* ════════════ BOOKING POPUP MODAL ════════════ */
-const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
-  const [step, setStep] = useState(1); // 1=results, 2=details, 3=payment, 4=confirmed
+const PENDING_KEY = "kh_pending_booking";
+const HOTEL_PHONE_FALLBACK = "+94 112 301737";
+const FAIL_TEXT = {
+  cancelled: "You cancelled the payment at PayHere, so no money was taken.",
+  failed: "PayHere could not complete the payment. No money was taken - please try again or use another card.",
+  chargedback: "This payment was reversed by the bank. Please contact us to complete your booking.",
+  expired: "Your room hold expired before the payment was completed. No money was taken.",
+  not_found: "We couldn't find this booking. Please start a new booking.",
+};
+const POLL_MS = 3000;
+const POLL_TRIES = 20;
+
+const Spinner = () => <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1a1464] mx-auto mb-4" />;
+
+const ContactLine = ({ phone }) => phone ? (
+  <p className="text-sm text-gray-500 mt-4">Need help? Call us on <a href={`tel:${phone.replace(/\s/g, "")}`} className="text-[#1a1464] font-semibold hover:underline" data-testid="payment-hotel-phone">{phone}</a></p>
+) : null;
+
+const PaymentVerifying = () => (
+  <div className="text-center py-10" data-testid="payment-verifying">
+    <Spinner />
+    <h4 className="text-[#1a1464] ws-serif text-2xl mb-2">Confirming your payment…</h4>
+    <p className="text-gray-500 text-sm">Please keep this window open. This usually takes a few seconds.</p>
+  </div>
+);
+
+const PaymentConfirmed = ({ data, onClose }) => (
+  <div className="text-center py-6" data-testid="payment-confirmed">
+    <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+    </div>
+    <h4 className="text-[#1a1464] ws-serif text-2xl mb-2">Booking Confirmed!</h4>
+    <p className="text-gray-500 mb-5">Thank you{data.guest_name ? `, ${data.guest_name.split(" ")[0]}` : ""}. Confirmation sent via email and SMS.</p>
+    <div className="bg-gray-50 rounded-lg p-4 text-sm text-left max-w-sm mx-auto mb-6 space-y-1.5" data-testid="payment-confirmed-details">
+      <div className="flex justify-between"><span className="text-gray-500">Booking ref</span><span className="font-semibold text-gray-800">{data.order_id}</span></div>
+      <div className="flex justify-between"><span className="text-gray-500">Room</span><span className="text-gray-800">{data.room_type}{data.num_rooms > 1 ? ` × ${data.num_rooms}` : ""}</span></div>
+      <div className="flex justify-between"><span className="text-gray-500">Dates</span><span className="text-gray-800">{data.check_in} → {data.check_out}</span></div>
+      <div className="flex justify-between"><span className="text-gray-500">Paid</span><span className="font-semibold text-[#e41e2e]">{formatLKR(data.paid_amount ?? data.payment_amount)}</span></div>
+    </div>
+    <button onClick={onClose} className="border border-[#1a1464] text-[#1a1464] hover:bg-[#1a1464]/5 px-8 py-2 rounded text-sm uppercase tracking-wider transition-colors" data-testid="payment-confirmed-close">Close</button>
+  </div>
+);
+
+const PaymentFailed = ({ reason, onRetry, canRetry, phone }) => (
+  <div className="text-center py-6" data-testid="payment-failed">
+    <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <svg className="w-7 h-7 text-[#e41e2e]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+    </div>
+    <h4 className="text-[#1a1464] ws-serif text-2xl mb-2">{reason === "cancelled" ? "Payment cancelled" : "Payment not completed"}</h4>
+    <p className="text-gray-600 mb-6 max-w-md mx-auto" data-testid="payment-failed-reason">{FAIL_TEXT[reason] || FAIL_TEXT.failed}</p>
+    {canRetry && (
+      <button onClick={onRetry} className="bg-[#e41e2e] hover:bg-[#c91826] text-white font-bold px-10 py-3 rounded uppercase tracking-widest text-sm transition-colors" data-testid="payment-retry-btn">
+        Try payment again
+      </button>
+    )}
+    <ContactLine phone={phone} />
+  </div>
+);
+
+const PaymentPending = ({ onCheck, phone }) => (
+  <div className="text-center py-6" data-testid="payment-pending">
+    <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <svg className="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+    </div>
+    <h4 className="text-[#1a1464] ws-serif text-2xl mb-2">Still waiting for PayHere</h4>
+    <p className="text-gray-600 mb-6 max-w-md mx-auto">We're still waiting for PayHere. If money was taken, your booking is safe and we'll email you.</p>
+    <button onClick={onCheck} className="border border-[#1a1464] text-[#1a1464] hover:bg-[#1a1464]/5 px-8 py-2.5 rounded text-sm font-semibold uppercase tracking-wider transition-colors" data-testid="payment-check-again-btn">Check again</button>
+    <ContactLine phone={phone} />
+  </div>
+);
+
+const BookingModal = ({ show, onClose, checkIn, checkOut, onRetry }) => {
+  const [step, setStep] = useState(1); // 1=results, 2=details, 3=payment, verifying | confirmed | failed | pending
+  const [payStatus, setPayStatus] = useState(null);
+  const [hotelPhone, setHotelPhone] = useState("");
+  const prefillRef = useRef(null);
+  const pollRef = useRef(null);
   const [availability, setAvailability] = useState(null);
   const [selectedType, setSelectedType] = useState("");
   const [loading, setLoading] = useState(true);
@@ -205,7 +266,13 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
     if (!show || !checkIn || !checkOut) return;
     setLoading(true); setError(""); setStep(1);
     axios.get(`${API}/public/availability?check_in=${checkIn}&check_out=${checkOut}`)
-      .then(r => { setAvailability(r.data); setLoading(false); })
+      .then(r => {
+        setAvailability(r.data); setLoading(false);
+        const pf = prefillRef.current;
+        prefillRef.current = null;
+        if (pf && r.data.available_room_types.some(t => t.room_type === pf.room_type)) { setSelectedType(pf.room_type); setStep(2); }
+        else if (pf) setError("Your previous room type is no longer available for these dates. Please choose another.");
+      })
       .catch(e => { setError(e.response?.data?.detail || "Failed to check availability"); setLoading(false); });
   }, [show, checkIn, checkOut]);
 
@@ -218,17 +285,53 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
     return () => clearInterval(timerRef.current);
   }, [countdown > 0]);
 
+  // Poll the hold until PayHere's server notification confirms or fails it
+  const pollStatus = (order, attempt = 0) => {
+    clearTimeout(pollRef.current);
+    axios.get(`${API}/public/booking/status/${order}`).then(({ data }) => {
+      if (data.status === "confirmed") {
+        setPayStatus(data); setStep("confirmed");
+        sessionStorage.removeItem(PENDING_KEY);
+        const value = Number(data.paid_amount ?? data.payment_amount ?? 0);
+        if (value > 0) trackPurchase({ transaction_id: data.order_id, value, currency: "LKR", item_name: data.room_type });
+      } else if (["payment_failed", "expired", "cancelled"].includes(data.status)) {
+        setPayStatus({ ...data, reason: data.status === "payment_failed" ? (data.failure_reason || "failed") : data.status }); setStep("failed");
+      } else if (attempt + 1 >= POLL_TRIES) {
+        setStep("pending");
+      } else {
+        pollRef.current = setTimeout(() => pollStatus(order, attempt + 1), POLL_MS);
+      }
+    }).catch((e) => {
+      if (e.response?.status === 404) { setPayStatus({ reason: "not_found" }); setStep("failed"); }
+      else if (attempt + 1 >= POLL_TRIES) setStep("pending");
+      else pollRef.current = setTimeout(() => pollStatus(order, attempt + 1), POLL_MS);
+    });
+  };
+
   // PayHere return check
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("booking") === "success") {
-      setStep(4);
-      window.history.replaceState({}, "", "/");
-      const order = params.get("order");
-      if (order) trackConfirmedPurchase(order);
+    const result = params.get("booking");
+    if (!result) return;
+    const order = params.get("order");
+    window.history.replaceState({}, "", "/");
+    axios.get(`${API}/public/hotel-info`).then(r => setHotelPhone(r.data.hotel_phone || HOTEL_PHONE_FALLBACK)).catch(() => setHotelPhone(HOTEL_PHONE_FALLBACK));
+    if (result === "success" && order) { setPayStatus({ order_id: order }); setStep("verifying"); pollStatus(order); }
+    else if (result === "cancelled") {
+      if (order) axios.post(`${API}/public/booking/release/${order}`).catch(() => {});
+      setPayStatus({ order_id: order, reason: "cancelled" }); setStep("failed");
     }
-    else if (params.get("booking") === "cancelled") { setError("Payment cancelled."); setStep(1); window.history.replaceState({}, "", "/"); }
+    return () => clearTimeout(pollRef.current);
   }, []);
+
+  const pending = (() => { try { return JSON.parse(sessionStorage.getItem(PENDING_KEY) || "null"); } catch { return null; } })();
+  const retryPayment = () => {
+    if (!pending) return;
+    if (pending.guest) setGuest(pending.guest);
+    prefillRef.current = { room_type: pending.room_type };
+    setPayStatus(null); setError(""); setHoldData(null); setStep(1);
+    onRetry(pending.check_in, pending.check_out);
+  };
 
   const holdRoom = async () => {
     if (!guest.name || !guest.email || !guest.phone) return setError("Please fill all required fields");
@@ -250,13 +353,14 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
     const form = document.createElement("form"); form.method = "POST"; form.action = ph.checkout_url || `${PAYHERE_BASE}/pay/checkout`;
     const fields = {
       merchant_id: ph.merchant_id, return_url: `${window.location.origin}/?booking=success&order=${holdData.order_id}`,
-      cancel_url: `${window.location.origin}/?booking=cancelled`, notify_url: `${API}/public/payhere/notify`,
+      cancel_url: `${window.location.origin}/?booking=cancelled&order=${holdData.order_id}`, notify_url: `${API}/public/payhere/notify`,
       order_id: ph.order_id, items: `Room Booking - ${holdData.room_type}`, currency: ph.currency, amount: ph.amount,
       first_name: guest.name.split(" ")[0], last_name: guest.name.split(" ").slice(1).join(" ") || "",
       email: guest.email, phone: guest.phone, address: "N/A", city: "Colombo", country: guest.country, hash: ph.hash,
       ...(ph.sandbox ? { sandbox: "true" } : {}),
     };
     Object.entries(fields).forEach(([k, v]) => { const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = v || ""; form.appendChild(i); });
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify({ order_id: holdData.order_id, room_type: holdData.room_type || selectedType, check_in: checkIn, check_out: checkOut, guest }));
     document.body.appendChild(form); form.submit();
   };
 
@@ -379,17 +483,10 @@ const BookingModal = ({ show, onClose, checkIn, checkOut }) => {
             </div>
           )}
 
-          {/* Step 4: Confirmed */}
-          {step === 4 && (
-            <div className="text-center py-6">
-              <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-              </div>
-              <h4 className="text-[#1a1464] ws-serif text-2xl mb-2">Booking Confirmed!</h4>
-              <p className="text-gray-500 mb-6">Confirmation sent via email and SMS.</p>
-              <button onClick={onClose} className="border border-[#1a1464] text-[#1a1464] hover:bg-[#1a1464]/5 px-8 py-2 rounded text-sm uppercase tracking-wider transition-colors">Close</button>
-            </div>
-          )}
+          {step === "verifying" && <PaymentVerifying />}
+          {step === "confirmed" && payStatus && <PaymentConfirmed data={payStatus} onClose={onClose} />}
+          {step === "failed" && <PaymentFailed reason={payStatus?.reason} canRetry={!!pending && payStatus?.reason !== "not_found" && payStatus?.reason !== "chargedback"} onRetry={retryPayment} phone={hotelPhone} />}
+          {step === "pending" && <PaymentPending phone={hotelPhone} onCheck={() => { setStep("verifying"); pollStatus(payStatus.order_id); }} />}
         </div>
       </div>
     </div>
@@ -956,7 +1053,8 @@ const Website = ({ page, section }) => {
       <About />
       <Contact hotelInfo={hotelInfo} />
       <Footer />
-      <BookingModal show={showBooking} onClose={() => setShowBooking(false)} checkIn={bookingDates.checkIn} checkOut={bookingDates.checkOut} />
+      <BookingModal show={showBooking} onClose={() => setShowBooking(false)} checkIn={bookingDates.checkIn} checkOut={bookingDates.checkOut}
+        onRetry={(ci, co) => { setBookingDates({ checkIn: ci, checkOut: co }); setShowBooking(true); }} />
     </div>
   );
 };

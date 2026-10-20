@@ -463,11 +463,16 @@ async def payhere_payment_notify(request: Request):
             print(f"Failed to send confirmations: {e}")
 
         return {"status": "confirmed", "booking_id": primary_booking_id}
+    elif str(status_code) == "0":
+        # PayHere pending: keep the hold, guest page keeps waiting
+        await db.booking_holds.update_one({"order_id": order_id, "status": "held"}, {"$set": {"payment_pending": True}})
+        return {"status": "pending"}
     else:
-        # Payment failed or pending - release hold
+        # -1 cancelled, -2 failed, -3 chargedback - release hold
+        reason = {"-1": "cancelled", "-2": "failed", "-3": "chargedback"}.get(str(status_code), "failed")
         await db.booking_holds.update_one(
-            {"order_id": order_id},
-            {"$set": {"status": "payment_failed"}}
+            {"order_id": order_id, "status": {"$ne": "confirmed"}},
+            {"$set": {"status": "payment_failed", "failure_reason": reason, "status_message": form_data.get("status_message", "")}}
         )
         return {"status": "payment_failed"}
 
@@ -552,7 +557,7 @@ async def get_booking_status(order_id: str):
     expires_at = hold.get("expires_at")
     if expires_at and expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if hold.get("status") == "held" and expires_at and now > expires_at:
+    if hold.get("status") == "held" and not hold.get("payment_pending") and expires_at and now > expires_at:
         await db.booking_holds.update_one({"order_id": order_id}, {"$set": {"status": "expired"}})
         hold["status"] = "expired"
 
@@ -566,7 +571,20 @@ async def get_booking_status(order_id: str):
         "paid_amount": hold.get("paid_amount"),
         "currency": hold.get("paid_currency") or "LKR",
         "guest_name": hold.get("guest_name"),
+        "num_rooms": hold.get("num_rooms", 1),
+        "failure_reason": hold.get("failure_reason"),
+        "payment_pending": bool(hold.get("payment_pending")),
     }
+
+
+@public_router.post("/booking/release/{order_id}")
+async def release_booking_hold(order_id: str):
+    """Guest cancelled at PayHere: free the held room(s) immediately. Only unpaid holds can be released."""
+    res = await db.booking_holds.update_one(
+        {"order_id": order_id, "status": "held", "payment_pending": {"$ne": True}},
+        {"$set": {"status": "cancelled", "cancelled_at": datetime.now(timezone.utc)}},
+    )
+    return {"released": res.modified_count == 1}
 
 @public_router.post("/contact")
 async def submit_contact_form(req: ContactFormRequest):

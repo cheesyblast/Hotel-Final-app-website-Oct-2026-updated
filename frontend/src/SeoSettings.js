@@ -159,7 +159,7 @@ const GlobalMeta = ({ seo, set, hotelName, city }) => {
       <Field label="Focus Keywords" hint="Press Enter or comma to add a keyword">
         <TagInput tags={seo.meta_keywords} onChange={(meta_keywords) => set({ meta_keywords })} />
       </Field>
-      <Field label="Canonical Domain URL" hint="Your primary public address, used for canonical links, sitemap and social cards. Leave empty to auto-detect the domain visitors use. Preview (emergentagent.com) addresses are ignored on the live site.">
+      <Field label="Canonical Domain URL" hint="Your primary public address, used for canonical links, sitemap and social cards. Leave empty to auto-detect the domain visitors use.">
         <input className={inputCls} value={seo.canonical_url} onChange={(e) => set({ canonical_url: e.target.value })} placeholder="Auto-detect (e.g. https://www.kreationhotels.com)" data-testid="seo-canonical-url" />
       </Field>
       <div>
@@ -328,11 +328,12 @@ const AnalyticsSettings = ({ seo, set }) => {
 
 export default function SeoSettings() {
   const [seo, setSeo] = useState(null);
+  const [savedCanonical, setSavedCanonical] = useState("");
   const [hotel, setHotel] = useState({});
   const [status, setStatus] = useState({ saving: false, msg: "", error: false });
 
   useEffect(() => {
-    axios.get(`${API}/seo/settings`).then((r) => setSeo(r.data)).catch(() => setStatus({ msg: "Could not load SEO settings", error: true }));
+    axios.get(`${API}/seo/settings`).then((r) => { setSeo(r.data); setSavedCanonical(r.data.canonical_url || ""); }).catch(() => setStatus({ msg: "Could not load SEO settings", error: true }));
     axios.get(`${API}/public/hotel-info`).then((r) => setHotel(r.data)).catch(() => {});
   }, []);
 
@@ -354,12 +355,15 @@ export default function SeoSettings() {
     try {
       const r = await axios.put(`${API}/seo/settings`, seo);
       setSeo(r.data);
+      setSavedCanonical(r.data.canonical_url || "");
       setStatus({ saving: false, msg: "SEO settings saved - live on the website now", error: false });
     } catch (e) {
       setStatus({ saving: false, msg: e.response?.data?.detail || "Save failed", error: true });
     }
   };
   const siteBase = guessSiteBase(seo.canonical_url);
+  // Saved canonical domain only (buttons hidden until one is saved)
+  const canonicalBase = (savedCanonical || "").trim().replace(/\/+$/, "");
 
   return (
     <div className="space-y-6" data-testid="seo-settings">
@@ -368,10 +372,12 @@ export default function SeoSettings() {
           <h2 className="text-xl font-semibold text-white flex items-center gap-2"><Search className="w-5 h-5 text-blue-400" /> SEO & Search</h2>
           <p className="text-sm text-gray-400">Changes apply to the public website as soon as you save.</p>
         </div>
-        <div className="flex gap-2 text-xs">
-          <a href={`${API}/public/seo/sitemap.xml`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 inline-flex items-center gap-1" data-testid="seo-view-sitemap">sitemap.xml <ExternalLink className="w-3 h-3" /></a>
-          <a href={`${API}/public/seo/robots.txt`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 inline-flex items-center gap-1" data-testid="seo-view-robots">robots.txt <ExternalLink className="w-3 h-3" /></a>
-        </div>
+        {canonicalBase && (
+          <div className="flex gap-2 text-xs">
+            <a href={`${canonicalBase}/sitemap.xml`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 inline-flex items-center gap-1" data-testid="seo-view-sitemap">sitemap.xml <ExternalLink className="w-3 h-3" /></a>
+            <a href={`${canonicalBase}/robots.txt`} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 inline-flex items-center gap-1" data-testid="seo-view-robots">robots.txt <ExternalLink className="w-3 h-3" /></a>
+          </div>
+        )}
       </div>
 
       <GlobalMeta seo={seo} set={set} hotelName={hotel.hotel_name || "Kreation Hotels"} city="Colombo" />
