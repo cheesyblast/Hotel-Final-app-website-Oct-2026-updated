@@ -27,70 +27,54 @@
 ## QUICK START (Single Server)
 
 ```bash
-# 1. Clone or copy the deployment folder to your server
-scp -r deployment/ user@your-server:/srv/kreation/
+# 1. Get the project onto the server (either option)
+git clone <your-repo> /srv/kreation                      # or:
+bash deployment/extract.sh ./kreation-deploy && scp -r kreation-deploy user@server:/srv/kreation
 
-# 2. SSH into server
-ssh user@your-server
-cd /srv/kreation
+# 2. Configure
+cd /srv/kreation/deployment
+cp .env.example .env && nano .env      # <-- EDIT ALL VALUES
 
-# 3. Copy environment file and fill in your values
-cp .env.example .env
-nano .env   # <-- EDIT ALL VALUES
-
-# 4. Copy your CRM and Website code
-#    (see "PROJECT STRUCTURE" below)
-
-# 5. Build and start everything
+# 3. Build and start everything (no manual file copying needed)
 docker compose up -d --build
 
-# 6. Install SSL certificates
-docker compose exec nginx certbot --nginx \
-  -d app.kreationhotels.com \
-  -d www.kreationhotels.com \
-  --non-interactive --agree-tos -m your@email.com
+# 4. Verify SEO endpoints return raw XML / text (not the SPA)
+curl -i http://localhost:8080/sitemap.xml     # website-frontend container directly
+curl -i http://localhost:8080/robots.txt
+curl -i http://localhost:8002/sitemap.xml     # website-backend directly
 
-# 7. Verify
-curl https://www.kreationhotels.com        # Website
-curl https://app.kreationhotels.com        # CRM login
+# 5. Install SSL certificates
+sudo certbot --nginx -d app.kreationhotels.com -d www.kreationhotels.com
 ```
 
 ## PROJECT STRUCTURE
 
+All images are built with the **project root as build context**, straight from the source folders:
+
 ```
 /srv/kreation/
-├── docker-compose.yml
-├── .env
-├── crm/
-│   ├── backend/
-│   │   ├── server.py              ← from /app/backend/server.py
-│   │   ├── public_routes.py       ← from /app/backend/public_routes.py  (CRM keeps this for internal use)
-│   │   ├── requirements.txt       ← from /app/backend/requirements.txt
-│   │   └── .env                   ← generated from docker env
-│   ├── frontend/
-│   │   ├── src/App.js             ← from /app/frontend/src/App.js
-│   │   ├── package.json           ← from /app/frontend/package.json
-│   │   └── ...                    ← full React project
-│   └── Dockerfile
-├── website/
-│   ├── backend/
-│   │   ├── main.py                ← standalone website API server
-│   │   ├── public_routes.py       ← from /app/backend/public_routes.py
-│   │   └── requirements.txt
-│   ├── frontend/
-│   │   ├── src/
-│   │   │   ├── Website.js         ← from /app/frontend/src/Website.js
-│   │   │   ├── App.js             ← thin wrapper that renders Website
-│   │   │   └── index.js
-│   │   ├── package.json
-│   │   └── ...
-│   └── Dockerfile
-├── nginx/
-│   ├── crm.conf
-│   └── website.conf
-└── mongo/
-    └── data/                      ← persistent MongoDB storage
+├── .dockerignore                     ← keeps node_modules, tests, .git out of images
+├── backend/                          ← server.py, public_routes.py, seo_routes.py, requirements.txt
+├── frontend/                         ← React app (one codebase; App.js picks CRM vs Website by hostname)
+└── deployment/
+    ├── docker-compose.yml            ← run docker compose from here
+    ├── .env                          ← from .env.example
+    ├── Dockerfile.crm-backend        ← server.py + public_routes.py + seo_routes.py
+    ├── Dockerfile.crm-frontend       ← React build + crm/nginx.conf
+    ├── Dockerfile.website-backend    ← main.py + public_routes.py + seo_routes.py (import-checked at build)
+    ├── Dockerfile.website-frontend   ← React build + website/nginx.conf.template
+    ├── crm/nginx.conf                ← CRM SPA (noindex, robots Disallow all)
+    ├── website/
+    │   ├── nginx.conf.template       ← /sitemap.xml, /robots.txt, /api/ → website-backend; SPA fallback
+    │   └── backend/{main.py,requirements.txt}
+    └── nginx/{crm.conf,website.conf} ← edge reverse proxy + SSL
 ```
+
+`/sitemap.xml` and `/robots.txt` are proxied to `website-backend` both by the edge nginx and by the nginx inside
+the website-frontend container (exact-match locations, evaluated before the `try_files … /index.html` fallback),
+so crawlers always receive the generated documents. The frontend container resolves the backend at request time
+(`resolver 127.0.0.11`), so it starts even if the backend is still booting. Override with env
+`WEBSITE_BACKEND_UPSTREAM` (default `website-backend:8002`) if you rename the service.
 
 ## SETTING UP FOR A NEW CRM CLIENT
 

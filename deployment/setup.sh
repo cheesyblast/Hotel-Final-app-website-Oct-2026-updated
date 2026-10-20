@@ -36,37 +36,25 @@ sudo mkdir -p $PROJECT_DIR
 sudo chown $USER:$USER $PROJECT_DIR
 cd $PROJECT_DIR
 
-# ── 4. Create directory structure ──
-mkdir -p crm/backend crm/frontend
-mkdir -p website/backend website/frontend
-mkdir -p nginx/ssl mongo/data
-
+# ── 4. Next steps ──
 echo ""
 echo "═══════════════════════════════════════════"
-echo "  Directory structure created!"
+echo "  Server ready!"
 echo "═══════════════════════════════════════════"
 echo ""
-echo "  Next steps:"
+echo "  1. Put the project in $PROJECT_DIR (git clone, or copy the folder made by deployment/extract.sh)"
+echo "     It must contain: backend/  frontend/  deployment/  .dockerignore"
 echo ""
-echo "  1. Copy your code files:"
-echo "     CRM Backend:     cp -r /path/to/backend/*    $PROJECT_DIR/crm/backend/"
-echo "     CRM Frontend:    cp -r /path/to/frontend/*   $PROJECT_DIR/crm/frontend/"
-echo "     Website Backend:  cp -r /path/to/website-backend/*  $PROJECT_DIR/website/backend/"
-echo "     Website Frontend: cp -r /path/to/website-frontend/* $PROJECT_DIR/website/frontend/"
+echo "  2. Configure environment:"
+echo "     cd $PROJECT_DIR/deployment && cp .env.example .env && nano .env"
 echo ""
-echo "  2. Copy deployment configs:"
-echo "     cp docker-compose.yml .env.example Dockerfile* $PROJECT_DIR/"
-echo "     cp nginx/*.conf $PROJECT_DIR/nginx/"
-echo ""
-echo "  3. Configure environment:"
-echo "     cp .env.example .env"
-echo "     nano .env"
-echo ""
-echo "  4. Start services:"
+echo "  3. Build & start (images build straight from ../backend and ../frontend):"
 echo "     docker compose up -d --build"
 echo ""
-echo "  5. Setup SSL:"
-echo "     sudo apt install certbot python3-certbot-nginx"
-echo "     sudo certbot --nginx -d app.kreationhotels.com -d www.kreationhotels.com"
+echo "  4. Verify SEO files are served raw by website-backend:"
+echo "     curl -i http://localhost:8080/sitemap.xml   # website-frontend container"
+echo "     curl -i http://localhost:8080/robots.txt"
 echo ""
+echo "  5. Setup SSL:"
+echo "     sudo certbot --nginx -d app.kreationhotels.com -d www.kreationhotels.com"
 echo "═══════════════════════════════════════════"

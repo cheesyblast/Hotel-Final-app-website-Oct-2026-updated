@@ -92,3 +92,9 @@ Full-stack hotel management system (CRM) + Public hotel website with online book
 - Canonical: empty or emergentagent.com-on-live → request host / ?origin=window.location.origin. og/twitter image always absolute.
 - Analytics inside SEO tab: ga4_id, gtm_id, pixel_id, head_code, body_code (validated). Public site only: SSR injection (marker meta[data-seo-tracking]) or client injection (`tracking.js`). Purchase event (GA4 + dataLayer + fbq Purchase, LKR, value = PayHere paid_amount) fires only for confirmed orders, deduped per order.
 - Tested: iteration_21 (backend 28/28, frontend pass; purchase-on-unconfirmed bug fixed after).
+
+## 2026-06 — Self-contained Docker builds
+- New: deployment/Dockerfile.{crm-backend,crm-frontend,website-backend,website-frontend} (context = project root), /app/.dockerignore, deployment/website/nginx.conf.template (exact-match /sitemap.xml & /robots.txt + /api/ proxied to website-backend before SPA fallback; runtime resolver), deployment/crm/nginx.conf (noindex). Old combined crm/website Dockerfiles removed. compose builds from `..`; website-frontend exposed on 127.0.0.1:8080.
+- Website backend requirements pinned to CRM versions (fastapi 0.110.1, starlette 0.37.2, pydantic 2.11.7/core 2.33.2, httpx 0.28.1, motor 3.3.1, pymongo 4.8.0…); Dockerfile import-checks `main` at build.
+- extract.sh = optional packager (backend/frontend/deployment + .dockerignore, verifies COPY sources). setup.sh + DEPLOYMENT_GUIDE updated.
+- Verified locally (no docker): website-backend from pinned venv + real `yarn build` + rendered nginx template → /sitemap.xml 200 application/xml, /robots.txt 200 text/plain, /api/* proxied, SPA routes 200.

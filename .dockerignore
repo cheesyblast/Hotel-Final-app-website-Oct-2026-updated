@@ -1,0 +1,19 @@
+# Build context is the project root (see deployment/docker-compose.yml)
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.env
+frontend/build
+backend/uploads
+backend/tests
+.git
+.emergent
+.screenshots
+.ruff_cache
+test_reports
+tests
+memory
+Templates
+*.log
+*_test.py
+test_*.py

@@ -1,92 +1,44 @@
 #!/bin/bash
 # ============================================
-#  Extract CRM + Website into separate folders
-#  Run from the Emergent project root (/app)
+#  Kreation Hotels — Optional packaging script
+#  Creates a clean, self-contained copy of the project that can be
+#  copied to any server and started with:
+#     cd <output>/deployment && docker compose up -d --build
+#  (Not required when deploying from a git clone of the project.)
 # ============================================
-
 set -e
 
-OUTPUT_DIR="${1:-/tmp/kreation-deploy}"
-echo "Extracting to: $OUTPUT_DIR"
+SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+OUTPUT_DIR="${1:-./kreation-deploy}"
 
-mkdir -p "$OUTPUT_DIR/crm/backend" "$OUTPUT_DIR/website/backend" "$OUTPUT_DIR/nginx"
+echo "▸ Packaging $SRC_DIR → $OUTPUT_DIR"
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR/backend" "$OUTPUT_DIR/frontend"
 
-# Both frontends are built from the same React codebase; App.js picks CRM vs Website by hostname
-copy_frontend() {
-  local dest="$1"
-  mkdir -p "$dest"
-  cp -r /app/frontend/src "$dest/src"
-  cp -r /app/frontend/public "$dest/public"
-  cp /app/frontend/package.json "$dest/"
-  for f in yarn.lock tailwind.config.js postcss.config.js jsconfig.json craco.config.js components.json; do
-    [ -f "/app/frontend/$f" ] && cp "/app/frontend/$f" "$dest/"
-  done
-  [ -d /app/frontend/plugins ] && cp -r /app/frontend/plugins "$dest/plugins"
-  return 0
-}
+# Backend: only runtime files
+cp "$SRC_DIR/backend/server.py" "$SRC_DIR/backend/public_routes.py" "$SRC_DIR/backend/seo_routes.py" "$SRC_DIR/backend/requirements.txt" "$OUTPUT_DIR/backend/"
 
-# ── CRM ──
-echo "▸ Extracting CRM backend..."
-cp /app/backend/server.py /app/backend/public_routes.py /app/backend/seo_routes.py "$OUTPUT_DIR/crm/backend/"
-cp /app/backend/requirements.txt "$OUTPUT_DIR/crm/backend/"
+# Frontend: source only (no node_modules / build)
+cp -r "$SRC_DIR/frontend/src" "$SRC_DIR/frontend/public" "$OUTPUT_DIR/frontend/"
+for f in package.json yarn.lock craco.config.js tailwind.config.js postcss.config.js jsconfig.json components.json; do
+  [ -f "$SRC_DIR/frontend/$f" ] && cp "$SRC_DIR/frontend/$f" "$OUTPUT_DIR/frontend/"
+done
+[ -d "$SRC_DIR/frontend/plugins" ] && cp -r "$SRC_DIR/frontend/plugins" "$OUTPUT_DIR/frontend/"
 
-echo "▸ Extracting CRM frontend..."
-copy_frontend "$OUTPUT_DIR/crm/frontend"
+# Deployment configs + build ignore rules
+cp -r "$SRC_DIR/deployment" "$OUTPUT_DIR/deployment"
+rm -f "$OUTPUT_DIR/deployment/.env"
+cp "$SRC_DIR/.dockerignore" "$OUTPUT_DIR/.dockerignore"
 
-# CRM .env template
-cat > "$OUTPUT_DIR/crm/backend/.env.example" << 'EOF'
-MONGO_URL=mongodb://mongo:27017
-DB_NAME=kreation_db
-JWT_SECRET_KEY=CHANGE_ME
-PUBLIC_WEBSITE_URL=https://www.kreationhotels.com
-UPLOAD_DIR=/app/uploads
-EOF
-
-# CRM Dockerfile
-cp /app/deployment/crm/Dockerfile "$OUTPUT_DIR/crm/"
-
-# ── Website ──
-echo "▸ Extracting Website backend..."
-cp /app/backend/public_routes.py /app/backend/seo_routes.py "$OUTPUT_DIR/website/backend/"
-cp /app/deployment/website/backend/main.py "$OUTPUT_DIR/website/backend/"
-cp /app/deployment/website/backend/requirements.txt "$OUTPUT_DIR/website/backend/"
-
-echo "▸ Extracting Website frontend..."
-copy_frontend "$OUTPUT_DIR/website/frontend"
-
-# Website .env template
-cat > "$OUTPUT_DIR/website/backend/.env.example" << 'EOF'
-MONGO_URL=mongodb://mongo:27017
-DB_NAME=kreation_db
-PAYHERE_MERCHANT_ID=YOUR_MERCHANT_ID
-PAYHERE_MERCHANT_SECRET=YOUR_MERCHANT_SECRET
-PAYHERE_BASE_URL=https://sandbox.payhere.lk
-TURNSTILE_SECRET_KEY=YOUR_TURNSTILE_SECRET
-PUBLIC_WEBSITE_URL=https://www.kreationhotels.com
-UPLOAD_DIR=/app/uploads
-WEBSITE_INDEX_URL=http://website-frontend:80/index.html
-EOF
-
-# Website Dockerfile
-cp /app/deployment/website/Dockerfile "$OUTPUT_DIR/website/"
-
-# ── Configs ──
-echo "▸ Copying deployment configs..."
-cp /app/deployment/docker-compose.yml "$OUTPUT_DIR/"
-cp /app/deployment/.env.example "$OUTPUT_DIR/"
-cp /app/deployment/nginx/*.conf "$OUTPUT_DIR/nginx/"
-cp /app/deployment/setup.sh "$OUTPUT_DIR/"
-cp /app/deployment/DEPLOYMENT_GUIDE.md "$OUTPUT_DIR/"
+# Sanity check: every file the Dockerfiles COPY must exist
+for f in backend/server.py backend/public_routes.py backend/seo_routes.py backend/requirements.txt \
+         deployment/website/backend/main.py deployment/website/backend/requirements.txt \
+         deployment/website/nginx.conf.template deployment/crm/nginx.conf frontend/package.json frontend/yarn.lock; do
+  [ -f "$OUTPUT_DIR/$f" ] || { echo "✗ Missing $f"; exit 1; }
+done
 
 echo ""
-echo "════════════════════════════════════════════"
-echo "  ✓ Extraction complete!"
-echo "════════════════════════════════════════════"
-echo ""
-echo "  Output: $OUTPUT_DIR"
-echo ""
-echo "  Structure:"
-find "$OUTPUT_DIR" -maxdepth 3 -type f | head -40
-echo ""
-echo "  To deploy: Follow DEPLOYMENT_GUIDE.md"
-echo "════════════════════════════════════════════"
+echo "✓ Done. Next steps on the server:"
+echo "    cd $OUTPUT_DIR/deployment"
+echo "    cp .env.example .env && nano .env"
+echo "    docker compose up -d --build"

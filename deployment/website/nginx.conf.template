@@ -1,0 +1,56 @@
+# ============================================
+#  Website frontend container nginx
+#  Exact-match locations (=) are evaluated before the SPA fallback,
+#  so crawlers always receive raw XML / text from website-backend.
+# ============================================
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Docker DNS; resolving at request time lets nginx start even if the backend is not up yet
+    resolver ${NGINX_RESOLVER} valid=30s ipv6=off;
+    set $website_backend http://${WEBSITE_BACKEND_UPSTREAM};
+
+    location = /sitemap.xml {
+        proxy_pass $website_backend/sitemap.xml;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /robots.txt {
+        proxy_pass $website_backend/robots.txt;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # API (booking, SEO meta, media) when this container is reached directly
+    location ^~ /api/ {
+        proxy_pass $website_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 10M;
+    }
+
+    location ^~ /static/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    # SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

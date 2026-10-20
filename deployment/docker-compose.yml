@@ -1,6 +1,8 @@
 # ==============================================
 #  Docker Compose — Kreation Hotels Full Stack
 #  CRM + Website + MongoDB + Nginx
+#  Run from this folder:  docker compose up -d --build
+#  (images build straight from ../backend and ../frontend)
 # ==============================================
 
 services:
@@ -23,9 +25,8 @@ services:
   # ── CRM Backend ──
   crm-backend:
     build:
-      context: ./crm
-      dockerfile: Dockerfile
-      target: backend
+      context: ..
+      dockerfile: deployment/Dockerfile.crm-backend
     container_name: kreation-crm-backend
     restart: always
     depends_on:
@@ -46,9 +47,8 @@ services:
   # ── CRM Frontend ──
   crm-frontend:
     build:
-      context: ./crm
-      dockerfile: Dockerfile
-      target: frontend
+      context: ..
+      dockerfile: deployment/Dockerfile.crm-frontend
       args:
         - REACT_APP_BACKEND_URL=${CRM_DOMAIN:-https://app.kreationhotels.com}
     container_name: kreation-crm-frontend
@@ -57,9 +57,8 @@ services:
   # ── Website Backend ──
   website-backend:
     build:
-      context: ./website
-      dockerfile: Dockerfile
-      target: backend
+      context: ..
+      dockerfile: deployment/Dockerfile.website-backend
     container_name: kreation-website-backend
     restart: always
     depends_on:
@@ -84,15 +83,18 @@ services:
   # ── Website Frontend ──
   website-frontend:
     build:
-      context: ./website
-      dockerfile: Dockerfile
-      target: frontend
+      context: ..
+      dockerfile: deployment/Dockerfile.website-frontend
       args:
         - REACT_APP_BACKEND_URL=${WEBSITE_DOMAIN:-https://www.kreationhotels.com}
         - REACT_APP_TURNSTILE_SITE_KEY=${TURNSTILE_SITE_KEY}
         - REACT_APP_PAYHERE_BASE_URL=${PAYHERE_BASE_URL:-https://sandbox.payhere.lk}
     container_name: kreation-website-frontend
     restart: always
+    depends_on:
+      - website-backend
+    ports:
+      - "127.0.0.1:8080:80"
 
   # ── Nginx Reverse Proxy ──
   nginx:

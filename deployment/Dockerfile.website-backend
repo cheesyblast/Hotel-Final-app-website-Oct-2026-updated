@@ -1,0 +1,22 @@
+# ============================================
+#  Website Backend — public API + SEO (sitemap, robots, SSR meta)
+#  Build context: project root
+# ============================================
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+COPY deployment/website/backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/public_routes.py ./public_routes.py
+COPY backend/seo_routes.py ./seo_routes.py
+COPY deployment/website/backend/main.py ./main.py
+
+# Fail the build (not the container) if any import is missing
+RUN MONGO_URL=mongodb://localhost:27017 DB_NAME=build_check python -c "import main"
+
+RUN mkdir -p /app/uploads
+EXPOSE 8002
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/api/health')" || exit 1
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips", "*"]
