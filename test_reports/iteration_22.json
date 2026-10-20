@@ -1,0 +1,33 @@
+{
+  "summary": "Tested real payment status flow + SEO tab tweaks. Backend 14/15 pytest pass: notify status 0 keeps hold held+payment_pending; -1/-2/-3 -> payment_failed with cancelled/failed/chargedback; bad md5sig -> 400; failure never overrides confirmed; booking/status returns all new fields, 404 for unknown, expired held->expired, held+payment_pending not auto-expired by status endpoint; release: held->cancelled (released true), confirmed/payment_failed/held+pending/unknown untouched (released false). 1 FAIL: cleanup_expired_holds() DELETES expired payment_pending holds (and any held hold >5min) whenever availability/hold is called. Frontend all requested flows PASS: confirmed (verifying -> confirmed with ref/room/dates/LKR 9,450.00, one dataLayer purchase, none on revisit, none on failed); payment_failed reason + retry button -> details step with dates 2027-08-03..04 and guest name/email/phone/guests/special requests prefilled; cancelled -> 'Payment cancelled' and hold status becomes cancelled; never-confirming hold -> pending after 58.8s with exact message, hotel phone +94 112 301737, Check again restarts polling and shows confirmed after Mongo confirm; unknown order -> 'couldn't find this booking', no retry. CRM SEO: hint text removed; sitemap/robots buttons hidden when canonical empty and when only typed (unsaved); after save of https://www.kreationhotels.com/ hrefs are https://www.kreationhotels.com/sitemap.xml and /robots.txt, persist after reload; canonical restored to empty.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "cleanup_expired_holds (public_routes.py:52) used by /public/availability and /public/booking/hold", "issue": "delete_many({status:'held', expires_at<now}) deletes payment_pending holds and any hold whose 5-min window passed while guest is still on PayHere. Then: /booking/status -> 404 so guest sees 'We couldn't find this booking' instead of the waiting message; and a later PayHere notify status_code 2 returns 'hold_not_found' -> money taken but NO booking created. Reproduced via test_pending_hold_survives_cleanup. Fix: exclude payment_pending:true from the delete (and ideally mark expired instead of deleting, and on notify 2 for an expired/missing-but-recorded hold still create the booking or flag for staff).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "get_held_rooms_for_dates", "issue": "Only counts holds with expires_at>now, so a held+payment_pending hold past 5 min no longer blocks the room -> another guest can book the same room while PayHere is still processing (double-booking risk on late confirm)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration_22_payment_status.py", "/app/backend/tests/ui_seed_iter22.py", "/app/test_reports/pytest/pytest_iter22.xml"],
+  "action_items": [
+    "HIGH: In cleanup_expired_holds exclude payment_pending holds (add 'payment_pending': {'$ne': True}); consider marking 'expired' instead of deleting so late PayHere notify (status 2) can still create the booking",
+    "MEDIUM: get_held_rooms_for_dates should keep blocking rooms for held+payment_pending holds even after expires_at"
+  ],
+  "critical_code_review_comments": [
+    "Polling continues if the guest closes the modal during 'verifying' (pollRef not cleared on close) - harmless but could fire trackPurchase/setState later; clear timeout in onClose",
+    "Retry reuses sessionStorage pending even after a cancelled/failed order from a different order id (no order_id match check against the returned order) - consider checking pending.order_id === order",
+    "Website.js 1064 lines and App.js ~15k lines - should be split"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration_22_payment_status.py", "/app/backend/tests/ui_seed_iter22.py"],
+  "success_rate": {"backend": "93% (14/15)", "frontend": "100% (all requested flows)"},
+  "seed_data_creation": "All test holds (guest_name 'Zz Test') deleted; no bookings/customers created (notify status 2 not called to avoid real SMS/email). SEO canonical_url restored to ''. Preview mode switched back to crm.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run REACT_APP_BACKEND_URL=... pytest backend/tests/test_iteration_22_payment_status.py (uses pymongo; payment_settings secret TESTSECRET, merchant TEST123). UI seed: python backend/tests/ui_seed_iter22.py seed|confirm <order>|status <order>|clean. Pending UI flow takes ~60s.",
+  "test_credentials": "admin / admin123"
+}

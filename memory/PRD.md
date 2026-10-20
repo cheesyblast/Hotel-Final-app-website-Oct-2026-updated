@@ -98,3 +98,9 @@ Full-stack hotel management system (CRM) + Public hotel website with online book
 - Website backend requirements pinned to CRM versions (fastapi 0.110.1, starlette 0.37.2, pydantic 2.11.7/core 2.33.2, httpx 0.28.1, motor 3.3.1, pymongo 4.8.0…); Dockerfile import-checks `main` at build.
 - extract.sh = optional packager (backend/frontend/deployment + .dockerignore, verifies COPY sources). setup.sh + DEPLOYMENT_GUIDE updated.
 - Verified locally (no docker): website-backend from pinned venv + real `yarn build` + rendered nginx template → /sitemap.xml 200 application/xml, /robots.txt 200 text/plain, /api/* proxied, SPA routes 200.
+
+## 2026-06 — Real payment status + SEO buttons
+- Website BookingModal: PayHere return → "Confirming your payment…" (poll /public/booking/status every 3s × 20) → Confirmed (ref/room/dates/paid, fires purchase) | Failed (reason: cancelled/failed/chargedback/expired/not_found; "Try payment again" reopens details step prefilled from sessionStorage kh_pending_booking) | Pending ("still waiting for PayHere…" + Check again). Hotel phone fallback +94 112 301737.
+- Backend: notify status 0 → payment_pending (hold kept, blocks room, never auto-expired); -1/-2/-3 → payment_failed + failure_reason; POST /public/booking/release/{order} on cancel; expired holds now marked "expired" (not deleted) so late confirmations still create bookings (flag confirmed_after_expiry).
+- SEO tab: sitemap/robots buttons → {saved canonical}/sitemap.xml|robots.txt, hidden until canonical saved; removed preview-domain hint text.
+- Tested: iteration_22 (frontend 100%, backend 14/15 → hold-deletion bug fixed & verified after).

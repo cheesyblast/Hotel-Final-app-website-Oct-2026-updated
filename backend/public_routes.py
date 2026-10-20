@@ -50,13 +50,13 @@ class ContactFormRequest(BaseModel):
 # ==================== HELPERS ====================
 
 async def cleanup_expired_holds():
-    """Remove expired booking holds"""
+    """Mark expired, unpaid holds as expired (kept so a late PayHere confirmation still finds them)"""
     now = datetime.now(timezone.utc)
-    result = await db.booking_holds.delete_many({
-        "expires_at": {"$lt": now},
-        "status": "held"
-    })
-    return result.deleted_count
+    result = await db.booking_holds.update_many(
+        {"expires_at": {"$lt": now}, "status": "held", "payment_pending": {"$ne": True}},
+        {"$set": {"status": "expired"}},
+    )
+    return result.modified_count
 
 async def get_held_rooms_for_dates(check_in_dt, check_out_dt):
     """Get room numbers currently held for overlapping dates"""
@@ -64,7 +64,7 @@ async def get_held_rooms_for_dates(check_in_dt, check_out_dt):
     now = datetime.now(timezone.utc)
     holds = await db.booking_holds.find({
         "status": "held",
-        "expires_at": {"$gt": now},
+        "$or": [{"expires_at": {"$gt": now}}, {"payment_pending": True}],
         "check_in": {"$lt": check_out_dt},
         "check_out": {"$gt": check_in_dt}
     }).to_list(100)
@@ -454,6 +454,7 @@ async def payhere_payment_notify(request: Request):
         await db.booking_holds.update_one(
             {"order_id": order_id},
             {"$set": {"status": "confirmed", "payment_id": payment_id, "confirmed_at": datetime.now(timezone.utc), "booking_id": primary_booking_id,
+                      "confirmed_after_expiry": hold.get("status") == "expired",
                       "paid_amount": float(payhere_amount or 0), "paid_currency": payhere_currency}}
         )
 
